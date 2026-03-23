@@ -16,6 +16,7 @@ export interface Session {
   createdAt: string;
   endedAt: string | null;
   messages?: Message[];
+  _count?: { messages: number };
 }
 
 export interface Message {
@@ -27,11 +28,29 @@ export interface Message {
   feedback?: MessageFeedback | null;
 }
 
+export interface Correction {
+  original: string;
+  corrected: string;
+  explanation: string;
+}
+
+export interface VocabNote {
+  word: string;
+  definition: string;
+  example: string;
+}
+
 export interface MessageFeedback {
   id: string;
   messageId: string;
-  corrections: unknown;
-  vocabNotes: unknown;
+  corrections: Correction[];
+  vocabNotes: VocabNote[];
+}
+
+export interface SendMessageResponse {
+  userMessage: Message;
+  assistantMessage: Message;
+  feedback: MessageFeedback | null;
 }
 
 export interface VocabularyItem {

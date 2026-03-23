@@ -1,5 +1,5 @@
 import { apiClient } from "./client.js";
-import type { Session, Message } from "../types/index.js";
+import type { Session, SendMessageResponse } from "../types/index.js";
 
 export async function createSession(data: {
   language: string;
@@ -22,11 +22,11 @@ export async function getSession(id: string): Promise<Session> {
 
 export async function sendMessage(
   sessionId: string,
-  content: string
-): Promise<Message> {
-  const res = await apiClient.post<Message>(
+  content: string,
+): Promise<SendMessageResponse> {
+  const res = await apiClient.post<SendMessageResponse>(
     `/sessions/${sessionId}/messages`,
-    { content }
+    { content },
   );
   return res.data;
 }
