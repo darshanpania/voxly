@@ -1,7 +1,9 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { SessionHeader } from "../components/SessionHeader";
 import { MessageBubble } from "../components/MessageBubble";
+import { VoiceButton } from "../components/VoiceButton";
+import { useTTS } from "../hooks/useTTS";
 import type { Message } from "../lib/api";
 import * as api from "../lib/api";
 
@@ -15,6 +17,7 @@ export function ConversationPage() {
   const [showFeedback, setShowFeedback] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const tts = useTTS();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -36,10 +39,10 @@ export function ConversationPage() {
     return session.id;
   };
 
-  const handleSend = async () => {
-    const text = input.trim();
+  const handleSend = async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
     if (!text || loading) return;
-    setInput("");
+    if (!overrideText) setInput("");
     setError(null);
     setLoading(true);
 
@@ -52,12 +55,24 @@ export function ConversationPage() {
         res.userMessage,
         { ...res.assistantMessage, feedback: res.feedback },
       ]);
+
+      // Auto-play assistant reply
+      tts.play(res.assistantMessage.content);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
   };
+
+  const handleTranscript = useCallback(
+    (transcript: string) => {
+      setInput(transcript);
+      handleSend(transcript);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [loading, sessionId, difficulty, mode],
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -88,9 +103,11 @@ export function ConversationPage() {
         difficulty={difficulty}
         mode={mode}
         showFeedback={showFeedback}
+        isMuted={tts.isMuted}
         onDifficultyChange={handleDifficultyChange}
         onModeChange={handleModeChange}
         onFeedbackToggle={() => setShowFeedback(!showFeedback)}
+        onMuteToggle={tts.toggleMute}
       />
 
       <div className="messages-container">
@@ -135,9 +152,13 @@ export function ConversationPage() {
           rows={1}
           disabled={loading}
         />
+        <VoiceButton
+          onTranscript={handleTranscript}
+          disabled={loading}
+        />
         <button
           className="send-btn"
-          onClick={handleSend}
+          onClick={() => handleSend()}
           disabled={loading || !input.trim()}
         >
           Send
