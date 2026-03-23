@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id               String                @id
+  email            String                @unique
+  isPremium        Boolean               @default(false)
+  createdAt        DateTime              @default(now())
+  sessions         Session[]
+  languageProfiles UserLanguageProfile[]
+}
+
+model UserLanguageProfile {
+  id                    String   @id @default(cuid())
+  userId                String
+  language              String
+  currentLevel          String   @default("A1")
+  voiceSecondsUsedToday Int      @default(0)
+  lastResetAt           DateTime @default(now())
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, language])
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  language   String    @default("es")
+  difficulty String    @default("A1")
+  mode       String    @default("helper")
+  createdAt  DateTime  @default(now())
+  endedAt    DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages   Message[]
+}
+
+model Message {
+  id        String           @id @default(cuid())
+  sessionId String
+  role      String
+  content   String
+  createdAt DateTime         @default(now())
+  session   Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  feedback  MessageFeedback?
+}
+
+model MessageFeedback {
+  id          String  @id @default(cuid())
+  messageId   String  @unique
+  corrections Json
+  vocabNotes  Json
+  message     Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+}
+
+model VocabularyItem {
+  id              String   @id @default(cuid())
+  userId          String
+  language        String
+  word            String
+  definition      String
+  exampleSentence String?
+  timesSeen       Int      @default(1)
+  timesCorrect    Int      @default(0)
+  easeFactor      Float    @default(2.5)
+  nextReviewAt    DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, language, word])
+}
