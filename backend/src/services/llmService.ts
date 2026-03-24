@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { env } from "../env.js";
+import { getVocabDueForReview } from "./progressService.js";
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -35,11 +36,12 @@ const DIFFICULTY_GUIDES: Record<string, string> = {
   C2: "Full native-level Spanish. No simplification. Register-switching. Treat the learner as fluent.",
 };
 
-function buildSystemPrompt(
+async function buildSystemPrompt(
   language: string,
   difficulty: string,
   mode: string,
-): string {
+  userId?: string,
+): Promise<string> {
   const difficultyGuide =
     DIFFICULTY_GUIDES[difficulty] || DIFFICULTY_GUIDES["A1"];
   const modeInstruction =
@@ -47,7 +49,7 @@ function buildSystemPrompt(
       ? "IMMERSION MODE: Respond ONLY in Spanish. Never use English, even if the user writes in English. If the user is struggling, rephrase in simpler Spanish instead of switching to English."
       : "HELPER MODE: Respond primarily in Spanish, but you may switch to English to explain grammar, clarify meaning, or help when the user is stuck. Include reply_translation in your JSON response.";
 
-  return `You are Sofia, a warm and encouraging ${language === "es" ? "Spanish" : language} language tutor. You are patient, friendly, and adapt to the student's level.
+  const base = `You are Sofia, a warm and encouraging ${language === "es" ? "Spanish" : language} language tutor. You are patient, friendly, and adapt to the student's level.
 
 DIFFICULTY LEVEL: ${difficulty}
 ${difficultyGuide}
@@ -84,6 +86,20 @@ Guidelines:
 - If the user writes in English, gently encourage them to try in Spanish.
 - Be conversational and natural. Ask follow-up questions to keep the conversation going.
 - If there are no errors to correct, return an empty corrections array.`;
+
+  if (userId) {
+    try {
+      const dueVocab = await getVocabDueForReview(userId, language);
+      const words = dueVocab.slice(0, 5).map((v) => v.word);
+      if (words.length > 0) {
+        return base + `\n\nWords to naturally reinforce this session: [${words.join(", ")}]`;
+      }
+    } catch {
+      // Non-critical — continue without vocab reinforcement
+    }
+  }
+
+  return base;
 }
 
 export async function getTutorResponse(
@@ -92,8 +108,9 @@ export async function getTutorResponse(
   mode: string,
   history: ConversationMessage[],
   userMessage: string,
+  userId?: string,
 ): Promise<TutorResponse> {
-  const systemPrompt = buildSystemPrompt(language, difficulty, mode);
+  const systemPrompt = await buildSystemPrompt(language, difficulty, mode, userId);
 
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },

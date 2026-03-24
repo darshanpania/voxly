@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { SessionHeader } from "../components/SessionHeader";
 import { MessageBubble } from "../components/MessageBubble";
 import { VoiceButton } from "../components/VoiceButton";
+import { SessionSummaryCard } from "../components/SessionSummaryCard";
 import { useTTS } from "../hooks/useTTS";
 import type { Message } from "../lib/api";
 import * as api from "../lib/api";
@@ -16,6 +17,7 @@ export function ConversationPage() {
   const [mode, setMode] = useState("helper");
   const [showFeedback, setShowFeedback] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sessionEnded, setSessionEnded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const tts = useTTS();
 
@@ -81,10 +83,17 @@ export function ConversationPage() {
     }
   };
 
+  const handleEndSession = () => {
+    if (sessionId && messages.length > 0) {
+      setSessionEnded(true);
+    }
+  };
+
   const handleNewSession = () => {
     setSessionId(null);
     setMessages([]);
     setError(null);
+    setSessionEnded(false);
   };
 
   const handleDifficultyChange = (d: string) => {
@@ -136,10 +145,27 @@ export function ConversationPage() {
           </div>
         )}
         {error && <div className="error-banner">{error}</div>}
+        {sessionEnded && sessionId && (
+          <SessionSummaryCard sessionId={sessionId} />
+        )}
         <div ref={messagesEndRef} />
       </div>
 
       <div className="input-bar">
+        {sessionId && messages.length > 0 && !sessionEnded && (
+          <button
+            className="end-session-btn"
+            onClick={handleEndSession}
+            title="End Session"
+          >
+            End
+          </button>
+        )}
+        {sessionEnded && (
+          <button className="new-session-btn" onClick={handleNewSession}>
+            New Session
+          </button>
+        )}
         <Link to="/sessions" className="sessions-link" title="Past Sessions">
           ☰
         </Link>

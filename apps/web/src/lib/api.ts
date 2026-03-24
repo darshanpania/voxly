@@ -126,6 +126,70 @@ export async function transcribeAudio(
   return res.json();
 }
 
+// --- Progress & Vocabulary types ---
+
+export interface SessionSummary {
+  topics: string[];
+  mistakes: string[];
+  newVocab: string[];
+  encouragement: string;
+}
+
+export interface VocabularyItem {
+  id: string;
+  userId: string;
+  language: string;
+  word: string;
+  definition: string;
+  exampleSentence: string | null;
+  timesSeen: number;
+  timesCorrect: number;
+  easeFactor: number;
+  nextReviewAt: string;
+  createdAt: string;
+}
+
+export interface VocabStats {
+  total_words: number;
+  words_mastered: number;
+  avg_difficulty: number;
+  top_mistakes: string[];
+}
+
+export interface ProgressStats {
+  sessions_count: number;
+  total_minutes: number;
+  streak_days: number;
+  level_history: Array<{ date: string; level: string }>;
+  vocab_growth: Array<{ date: string; count: number }>;
+}
+
+export function getSessionSummary(sessionId: string): Promise<SessionSummary> {
+  return request(`/sessions/${sessionId}/summary`);
+}
+
+export function getVocabulary(language = "es"): Promise<VocabularyItem[]> {
+  return request(`/vocabulary?language=${language}`);
+}
+
+export function getVocabStats(language = "es"): Promise<VocabStats> {
+  return request(`/vocabulary/stats?language=${language}`);
+}
+
+export function getProgress(language = "es"): Promise<ProgressStats> {
+  return request(`/progress?language=${language}`);
+}
+
+export function reviewVocab(
+  itemId: string,
+  wasCorrect: boolean,
+): Promise<VocabularyItem> {
+  return request(`/vocabulary/${itemId}/review`, {
+    method: "PUT",
+    body: JSON.stringify({ wasCorrect }),
+  });
+}
+
 export async function synthesizeSpeech(
   text: string,
   language: string,

@@ -135,6 +135,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       session.mode,
       history,
       body.content,
+      userId,
     );
 
     // Save assistant message
