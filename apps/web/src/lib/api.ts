@@ -42,6 +42,11 @@ export interface Session {
   _count?: { messages: number };
 }
 
+export interface ReplyLine {
+  es: string;
+  en: string;
+}
+
 export interface Message {
   id: string;
   sessionId: string;
@@ -49,6 +54,7 @@ export interface Message {
   content: string;
   createdAt: string;
   feedback?: MessageFeedback | null;
+  replyLines?: ReplyLine[];
 }
 
 export interface Correction {

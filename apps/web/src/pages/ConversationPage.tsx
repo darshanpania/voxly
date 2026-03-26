@@ -58,7 +58,7 @@ export function ConversationPage() {
       setMessages((prev) => [
         ...prev,
         res.userMessage,
-        { ...res.assistantMessage, feedback: res.feedback },
+        { ...res.assistantMessage, feedback: res.feedback, replyLines: res.assistantMessage.replyLines },
       ]);
 
       // Auto-play assistant reply

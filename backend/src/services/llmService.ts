@@ -4,9 +4,15 @@ import { getVocabDueForReview } from "./progressService.js";
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
+export interface ReplyLine {
+  es: string;
+  en: string;
+}
+
 export interface TutorResponse {
   reply: string;
   reply_translation?: string;
+  reply_lines: ReplyLine[];
   feedback: {
     corrections: Array<{
       original: string;
@@ -70,8 +76,11 @@ CORRECTION APPROACH (CRITICAL — follow this strictly):
 
 You MUST respond with valid JSON matching this exact schema (no markdown fences, no extra text):
 {
-  "reply": "Your conversational response in Spanish",
-  ${mode === "helper" ? '"reply_translation": "English translation of your reply",' : ""}
+  "reply": "Your full conversational response in Spanish",
+  "reply_lines": [
+    { "es": "Each sentence of your Spanish reply", "en": "Its English translation" },
+    { "es": "Another sentence in Spanish", "en": "Its English translation" }
+  ],
   "feedback": {
     "corrections": [
       {
@@ -92,6 +101,8 @@ You MUST respond with valid JSON matching this exact schema (no markdown fences,
     "awaiting_correction": false
   }
 }
+
+IMPORTANT: "reply_lines" must break your reply into individual sentences, each with the Spanish text ("es") and its English translation ("en"). Every sentence in "reply" must appear in "reply_lines".
 
 Guidelines:
 - Keep corrections helpful, not overwhelming. Focus on the most important errors.
@@ -177,16 +188,19 @@ export async function getTutorResponse(
         parsed.feedback.difficulty_signal || "on_track";
       parsed.feedback.awaiting_correction =
         parsed.feedback.awaiting_correction || false;
+      parsed.reply_lines = parsed.reply_lines || [{ es: parsed.reply, en: parsed.reply_translation || parsed.reply }];
 
       return parsed;
     } catch (err) {
       if (attempt === 1) {
         // Graceful fallback: return raw text with empty feedback
+        const fallbackReply =
+          err instanceof Error
+            ? `Lo siento, hubo un problema. (Error: ${err.message})`
+            : "Lo siento, hubo un problema técnico.";
         return {
-          reply:
-            err instanceof Error
-              ? `Lo siento, hubo un problema. (Error: ${err.message})`
-              : "Lo siento, hubo un problema técnico.",
+          reply: fallbackReply,
+          reply_lines: [{ es: fallbackReply, en: "Sorry, there was a problem." }],
           feedback: {
             corrections: [],
             vocab_notes: [],

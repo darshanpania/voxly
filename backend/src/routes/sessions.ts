@@ -163,7 +163,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       userMessage,
-      assistantMessage: { ...assistantMessage, feedback },
+      assistantMessage: { ...assistantMessage, feedback, replyLines: tutorResponse.reply_lines },
       feedback,
     };
   });

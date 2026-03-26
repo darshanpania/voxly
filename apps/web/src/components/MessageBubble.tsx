@@ -1,10 +1,28 @@
-import type { Message } from "../lib/api";
+import { useState } from "react";
+import type { Message, ReplyLine } from "../lib/api";
 import { FeedbackCard } from "./FeedbackCard";
 import { cn } from "@/lib/utils";
 
 interface Props {
   message: Message;
   showFeedback: boolean;
+}
+
+function TranslatableLine({ line }: { line: ReplyLine }) {
+  const [showTranslation, setShowTranslation] = useState(false);
+
+  return (
+    <span
+      className="translatable-line"
+      onMouseEnter={() => setShowTranslation(true)}
+      onMouseLeave={() => setShowTranslation(false)}
+    >
+      {line.es}
+      {showTranslation && (
+        <span className="translation-tooltip">{line.en}</span>
+      )}
+    </span>
+  );
 }
 
 export function MessageBubble({ message, showFeedback }: Props) {
@@ -14,50 +32,29 @@ export function MessageBubble({ message, showFeedback }: Props) {
     minute: "2-digit",
   });
 
-  return (
-    <div
-      className={cn(
-        "flex items-end gap-2 animate-fade-in",
-        isUser ? "flex-row-reverse" : "flex-row",
-      )}
-    >
-      {/* Assistant avatar */}
-      {!isUser && (
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
-          style={{
-            background: "linear-gradient(135deg, var(--color-primary), var(--color-accent))",
-          }}
-        >
-          S
-        </div>
-      )}
+  const renderContent = () => {
+    if (isUser || !message.replyLines?.length) {
+      return message.content;
+    }
 
-      {/* Message column */}
-      <div
-        className={cn(
-          "flex flex-col gap-1 max-w-[80%]",
-          isUser ? "items-end" : "items-start",
-        )}
-      >
-        {/* Bubble */}
-        <div
-          className={cn(
-            "px-4 py-2.5 text-sm leading-relaxed",
-            isUser
-              ? "text-white rounded-2xl rounded-br-sm"
-              : "bg-bubble-assistant border border-border text-text rounded-2xl rounded-bl-sm",
-          )}
-          style={
-            isUser
-              ? {
-                  background:
-                    "linear-gradient(135deg, var(--color-bubble-user), #3730a3)",
-                }
-              : undefined
-          }
-        >
-          {message.content}
+    return (
+      <span className="translatable-content">
+        {message.replyLines.map((line, i) => (
+          <span key={i}>
+            {i > 0 && " "}
+            <TranslatableLine line={line} />
+          </span>
+        ))}
+      </span>
+    );
+  };
+
+  return (
+    <div className={`message-row ${isUser ? "message-row--user" : "message-row--assistant"}`}>
+      {!isUser && <div className="avatar">S</div>}
+      <div className="message-col">
+        <div className={`bubble ${isUser ? "bubble--user" : "bubble--assistant"}`}>
+          {renderContent()}
         </div>
 
         {/* Timestamp */}

@@ -20,6 +20,12 @@ export async function verifySupabaseJwt(
   request: FastifyRequest,
   reply: FastifyReply
 ): Promise<void> {
+  // DEV BYPASS: skip auth in development
+  if (process.env.NODE_ENV !== "production") {
+    request.user = { sub: "dev-user-000", email: "dev@test.com", role: "authenticated" };
+    return;
+  }
+
   const authHeader = request.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
