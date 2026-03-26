@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(npx prisma:*)",
+      "Bash(grep -r \"getSession\\\\|signIn\\\\|signUp\\\\|auth\\\\.\" /Users/darshan/Desktop/Projects/voxly/apps/web/src --include=*.tsx --include=*.ts)",
+      "Bash(grep -r \"useEffect\\\\|onMount\\\\|initialize\\\\|setup\" /Users/darshan/Desktop/Projects/voxly/apps/web/src --include=*.tsx --include=*.ts)",
+      "Bash(lsof:*)",
+      "Bash(kill -9 7571 7564 92590)",
+      "Bash(kill -9 7025)",
+      "Bash(xargs kill:*)",
+      "Bash(git stash:*)",
+      "Bash(git pull:*)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(curl:*)",
+      "Bash(pkill -f \"turbo run dev\")",
+      "Bash(pkill -f \"tsx watch\")",
+      "Bash(pkill -f \"vite\")",
+      "Bash(pkill -f \"turbo\")",
+      "Bash(grep -E \"\\\\.tsx$|\\\\.css$\")",
+      "Bash(npx tsc:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(find /Users/darshan/Desktop/Projects/voxly -maxdepth 2 -name Dockerfile* -o -name docker-compose*)",
+      "Bash(find /Users/darshan/Desktop/Projects/voxly -maxdepth 2 -type f \\\\\\(-name .husky -o -name .lint-staged* -o -name husky.config.js \\\\\\))",
+      "Bash(find /Users/darshan/Desktop/Projects/voxly/backend -type f \\\\\\(-name *.test.ts -o -name *.spec.ts -o -name test -o -name __tests__ \\\\\\))",
+      "Bash(find /Users/darshan/Desktop/Projects/voxly -maxdepth 2 -type f \\\\\\(-name jest.config.* -o -name vitest.config.* -o -name .npmrc -o -name .env.production -o -name .dockerignore \\\\\\))",
+      "Bash(find /Users/darshan/Desktop/Projects/voxly -maxdepth 3 -type f \\\\\\(-name prisma.schema -o -name schema.prisma -o -name *.toml -o -name .github \\\\\\))",
+      "Bash(git -C /Users/darshan/Desktop/Projects/voxly log --oneline --all)",
+      "Bash(git -C /Users/darshan/Desktop/Projects/voxly ls-files)",
+      "Bash(git -C /Users/darshan/Desktop/Projects/voxly log --all --diff-filter=A --name-only --pretty=format: -- *.env */.env)",
+      "Bash(git config:*)"
+    ]
+  }
+}
