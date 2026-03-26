@@ -1,3 +1,7 @@
+import { MessageSquare, Volume2, VolumeX } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+
 interface Props {
   difficulty: string;
   mode: string;
@@ -22,17 +26,30 @@ export function SessionHeader({
   onMuteToggle,
 }: Props) {
   return (
-    <header className="session-header">
-      <div className="session-header__title">
-        <span className="sofia-badge">S</span>
-        <strong>Sofia</strong>
-        <span className="session-header__subtitle">Spanish Tutor</span>
+    <header className="bg-surface/80 backdrop-blur-xl border-b border-border px-4 py-3 flex items-center justify-between">
+      {/* Left: Sofia identity */}
+      <div className="flex items-center gap-2.5">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center shrink-0 shadow-md shadow-primary/20">
+          <span className="text-white text-sm font-bold leading-none">S</span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-text font-bold text-sm leading-tight">Sofia</span>
+          <span className="text-text-muted text-xs leading-tight">Spanish Tutor</span>
+        </div>
       </div>
-      <div className="session-header__controls">
+
+      {/* Right: controls */}
+      <div className="flex items-center gap-2">
+        {/* Difficulty select */}
         <select
           value={difficulty}
           onChange={(e) => onDifficultyChange(e.target.value)}
-          className="control-select"
+          className={cn(
+            "bg-surface-2 border border-border rounded-lg px-2 py-1.5",
+            "text-sm text-text cursor-pointer",
+            "focus:outline-none focus:border-primary/50",
+            "transition-colors duration-200",
+          )}
         >
           {LEVELS.map((l) => (
             <option key={l} value={l}>
@@ -40,27 +57,36 @@ export function SessionHeader({
             </option>
           ))}
         </select>
-        <button
-          className={`control-btn ${mode === "immersion" ? "control-btn--active" : ""}`}
-          onClick={() =>
-            onModeChange(mode === "helper" ? "immersion" : "helper")
-          }
+
+        {/* Mode toggle */}
+        <Button
+          variant={mode === "immersion" ? "default" : "secondary"}
+          size="sm"
+          onClick={() => onModeChange(mode === "helper" ? "immersion" : "helper")}
         >
-          {mode === "helper" ? "Helper" : "Immersion"}
-        </button>
-        <button
-          className={`control-btn ${showFeedback ? "control-btn--active" : ""}`}
+          {mode === "immersion" ? "Immersion" : "Helper"}
+        </Button>
+
+        {/* Feedback toggle */}
+        <Button
+          variant={showFeedback ? "default" : "ghost"}
+          size="sm"
           onClick={onFeedbackToggle}
+          title={showFeedback ? "Disable feedback" : "Enable feedback"}
         >
-          Feedback {showFeedback ? "ON" : "OFF"}
-        </button>
-        <button
-          className={`control-btn ${isMuted ? "" : "control-btn--active"}`}
+          <MessageSquare />
+          {showFeedback ? "Feedback" : "Feedback"}
+        </Button>
+
+        {/* Mute toggle */}
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={onMuteToggle}
           title={isMuted ? "Unmute Sofia" : "Mute Sofia"}
         >
-          {isMuted ? "Muted" : "Sound ON"}
-        </button>
+          {isMuted ? <VolumeX /> : <Volume2 />}
+        </Button>
       </div>
     </header>
   );

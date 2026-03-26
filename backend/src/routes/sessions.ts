@@ -153,6 +153,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       userId,
       session.language,
       tutorResponse,
+      sessionId,
     );
 
     // Fetch the saved feedback to return

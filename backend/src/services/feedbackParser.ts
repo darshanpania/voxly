@@ -6,6 +6,7 @@ export async function saveFeedbackAndVocab(
   userId: string,
   language: string,
   tutorResponse: TutorResponse,
+  sessionId?: string,
 ): Promise<void> {
   const { corrections, vocab_notes } = tutorResponse.feedback;
 
@@ -32,6 +33,7 @@ export async function saveFeedbackAndVocab(
         timesSeen: { increment: 1 },
         definition: vocab.definition,
         exampleSentence: vocab.example,
+        category: vocab.category || "general",
       },
       create: {
         userId,
@@ -39,6 +41,8 @@ export async function saveFeedbackAndVocab(
         word: vocab.word,
         definition: vocab.definition,
         exampleSentence: vocab.example,
+        category: vocab.category || "general",
+        sessionId: sessionId || null,
       },
     });
   }
