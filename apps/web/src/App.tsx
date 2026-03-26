@@ -6,6 +6,8 @@ import { VocabularyPage } from "./pages/VocabularyPage";
 import { SessionHistoryPage } from "./pages/SessionHistoryPage";
 import { MessageCircle, BarChart3, BookOpen, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ThemeProvider } from "@/context/ThemeContext";
+import { TopBar } from "@/components/TopBar";
 
 const navLinks = [
   { to: "/", label: "Chat", icon: MessageCircle },
@@ -46,19 +48,22 @@ function BottomNav() {
 export function App() {
   return (
     <BrowserRouter>
-      <div className="flex flex-col h-screen bg-background text-text">
-        <main className="flex-1 overflow-hidden">
-          <Routes>
-            <Route path="/" element={<ConversationPage />} />
-            <Route path="/sessions" element={<SessionsPage />} />
-            <Route path="/sessions/:id" element={<SessionsPage />} />
-            <Route path="/progress" element={<ProgressPage />} />
-            <Route path="/vocabulary" element={<VocabularyPage />} />
-            <Route path="/history" element={<SessionHistoryPage />} />
-          </Routes>
-        </main>
-        <BottomNav />
-      </div>
+      <ThemeProvider>
+        <div className="flex flex-col h-screen bg-background text-text">
+          <TopBar />
+          <main className="flex-1 overflow-hidden">
+            <Routes>
+              <Route path="/" element={<ConversationPage />} />
+              <Route path="/sessions" element={<SessionsPage />} />
+              <Route path="/sessions/:id" element={<SessionsPage />} />
+              <Route path="/progress" element={<ProgressPage />} />
+              <Route path="/vocabulary" element={<VocabularyPage />} />
+              <Route path="/history" element={<SessionHistoryPage />} />
+            </Routes>
+          </main>
+          <BottomNav />
+        </div>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }
