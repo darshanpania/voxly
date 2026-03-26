@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, MessageCircle, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { MessageBubble } from "../components/MessageBubble";
 import type { Session } from "../lib/api";
 import * as api from "../lib/api";
@@ -16,29 +19,51 @@ function SessionList() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="loading">Loading sessions...</div>;
-  if (sessions.length === 0)
+  if (loading) {
     return (
-      <div className="empty-state">
-        <p>No sessions yet.</p>
-        <Link to="/">Start a conversation</Link>
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
       </div>
     );
+  }
+
+  if (sessions.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
+        <MessageCircle className="w-12 h-12 text-text-dim opacity-40" />
+        <p className="text-text-muted text-sm">No sessions yet</p>
+        <Link
+          to="/"
+          className="text-primary text-sm hover:text-primary-hover transition-colors"
+        >
+          Start a conversation
+        </Link>
+      </div>
+    );
+  }
 
   return (
-    <div className="sessions-list">
+    <div className="flex flex-col gap-2 p-4 overflow-y-auto flex-1">
       {sessions.map((s) => (
-        <Link key={s.id} to={`/sessions/${s.id}`} className="session-card">
-          <div className="session-card__info">
-            <strong>
-              {s.language.toUpperCase()} · {s.difficulty}
-            </strong>
-            <span className="session-card__mode">{s.mode}</span>
-          </div>
-          <div className="session-card__meta">
-            <span>{new Date(s.createdAt).toLocaleDateString()}</span>
-            <span>{s._count?.messages ?? 0} messages</span>
-          </div>
+        <Link key={s.id} to={`/sessions/${s.id}`} className="block">
+          <Card className="hover:border-primary/30 transition-colors cursor-pointer p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-semibold text-sm text-text truncate">
+                  {s.language.toUpperCase()} · {s.difficulty}
+                </span>
+                <Badge variant="secondary">{s.mode}</Badge>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <span className="text-sm text-text-muted">
+                  {new Date(s.createdAt).toLocaleDateString()}
+                </span>
+                <span className="text-sm text-text-dim">
+                  {s._count?.messages ?? 0} msgs
+                </span>
+              </div>
+            </div>
+          </Card>
         </Link>
       ))}
     </div>
@@ -59,19 +84,41 @@ function SessionDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) return <div className="loading">Loading...</div>;
-  if (!session) return <div className="error-banner">Session not found</div>;
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-danger text-sm">Session not found</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="session-detail">
-      <div className="session-detail__header">
-        <strong>
-          {session.language.toUpperCase()} · {session.difficulty} ·{" "}
-          {session.mode}
-        </strong>
-        <span>{new Date(session.createdAt).toLocaleDateString()}</span>
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Session detail header bar */}
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium text-text">
+            {session.language.toUpperCase()}
+          </span>
+          <span className="text-text-dim text-sm">·</span>
+          <Badge variant="secondary">{session.difficulty}</Badge>
+          <Badge variant="default">{session.mode}</Badge>
+        </div>
+        <span className="text-sm text-text-muted shrink-0">
+          {new Date(session.createdAt).toLocaleDateString()}
+        </span>
       </div>
-      <div className="messages-container">
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
         {session.messages?.map((m) => (
           <MessageBubble key={m.id} message={m} showFeedback={true} />
         ))}
@@ -84,13 +131,22 @@ export function SessionsPage() {
   const { id } = useParams();
 
   return (
-    <div className="sessions-page">
-      <header className="sessions-page__header">
-        <Link to="/" className="back-link">
-          ← Back
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="px-4 py-4 border-b border-border flex items-center gap-3 shrink-0">
+        <Link
+          to={id ? "/sessions" : "/"}
+          className="flex items-center gap-1 text-sm text-text-muted hover:text-text transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
         </Link>
-        <h2>Past Sessions</h2>
-      </header>
+        <div className="flex items-center gap-2 ml-2">
+          <MessageCircle className="w-5 h-5 text-primary" />
+          <h2 className="text-xl font-bold gradient-text">Past Sessions</h2>
+        </div>
+      </div>
+
       {id ? <SessionDetail /> : <SessionList />}
     </div>
   );

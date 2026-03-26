@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback } from "react";
+import { Mic, MicOff, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import * as api from "../lib/api";
 
 type VoiceState = "idle" | "recording" | "processing";
@@ -75,46 +77,51 @@ export function VoiceButton({
     }
   }, []);
 
-  const label =
-    state === "recording"
-      ? "Release"
-      : state === "processing"
-        ? "..."
-        : "Mic";
+  if (state === "processing") {
+    return (
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled
+        type="button"
+      >
+        <Loader2 className="animate-spin" />
+        <span>Processing</span>
+      </Button>
+    );
+  }
+
+  if (state === "recording") {
+    return (
+      <Button
+        variant="destructive"
+        size="sm"
+        className="relative"
+        onMouseUp={stopRecording}
+        onMouseLeave={stopRecording}
+        onTouchEnd={stopRecording}
+        type="button"
+        title="Release to stop"
+      >
+        <span className="absolute inset-0 rounded-[inherit] bg-danger/30 animate-pulse" />
+        <MicOff />
+        <span>Release</span>
+      </Button>
+    );
+  }
 
   return (
-    <button
-      className={`voice-btn voice-btn--${state}`}
+    <Button
+      variant="secondary"
+      size="sm"
       onMouseDown={startRecording}
-      onMouseUp={stopRecording}
-      onMouseLeave={stopRecording}
       onTouchStart={startRecording}
-      onTouchEnd={stopRecording}
-      disabled={disabled || state === "processing"}
+      disabled={disabled}
       title="Hold to record"
       type="button"
     >
-      {state === "processing" ? (
-        <span className="voice-btn__spinner" />
-      ) : (
-        <svg
-          className="voice-btn__icon"
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-          <line x1="12" y1="19" x2="12" y2="23" />
-          <line x1="8" y1="23" x2="16" y2="23" />
-        </svg>
-      )}
-      <span className="voice-btn__label">{label}</span>
-    </button>
+      <Mic />
+      <span>Mic</span>
+    </Button>
   );
 }

@@ -61,6 +61,7 @@ export interface VocabNote {
   word: string;
   definition: string;
   example: string;
+  category?: string;
 }
 
 export interface MessageFeedback {
@@ -68,6 +69,7 @@ export interface MessageFeedback {
   messageId: string;
   corrections: Correction[];
   vocabNotes: VocabNote[];
+  awaitingCorrection?: boolean;
 }
 
 export interface SendMessageResponse {
@@ -142,11 +144,23 @@ export interface VocabularyItem {
   word: string;
   definition: string;
   exampleSentence: string | null;
+  category: string;
+  sessionId: string | null;
+  // FSRS fields
+  stability: number;
+  difficulty: number;
+  elapsedDays: number;
+  scheduledDays: number;
+  reps: number;
+  lapses: number;
+  state: number; // 0=New, 1=Learning, 2=Review, 3=Relearning
+  lastReviewAt: string | null;
+  nextReviewAt: string;
+  createdAt: string;
+  // Legacy
   timesSeen: number;
   timesCorrect: number;
   easeFactor: number;
-  nextReviewAt: string;
-  createdAt: string;
 }
 
 export interface VocabStats {
@@ -154,6 +168,12 @@ export interface VocabStats {
   words_mastered: number;
   avg_difficulty: number;
   top_mistakes: string[];
+  by_state: {
+    new: number;
+    learning: number;
+    review: number;
+    relearning: number;
+  };
 }
 
 export interface ProgressStats {
@@ -182,12 +202,23 @@ export function getProgress(language = "es"): Promise<ProgressStats> {
 
 export function reviewVocab(
   itemId: string,
-  wasCorrect: boolean,
+  rating: number,
 ): Promise<VocabularyItem> {
   return request(`/vocabulary/${itemId}/review`, {
     method: "PUT",
-    body: JSON.stringify({ wasCorrect }),
+    body: JSON.stringify({ rating }),
   });
+}
+
+export function getAllVocabulary(
+  language = "es",
+  options?: { category?: string; state?: number; sort?: string },
+): Promise<VocabularyItem[]> {
+  const params = new URLSearchParams({ language });
+  if (options?.category) params.set("category", options.category);
+  if (options?.state !== undefined) params.set("state", String(options.state));
+  if (options?.sort) params.set("sort", options.sort);
+  return request(`/vocabulary/all?${params}`);
 }
 
 export async function synthesizeSpeech(

@@ -17,8 +17,10 @@ export interface TutorResponse {
       word: string;
       definition: string;
       example: string;
+      category?: string;
     }>;
     difficulty_signal: "too_easy" | "on_track" | "too_hard";
+    awaiting_correction?: boolean;
   };
 }
 
@@ -56,6 +58,16 @@ ${difficultyGuide}
 
 ${modeInstruction}
 
+CORRECTION APPROACH (CRITICAL — follow this strictly):
+- When the student makes errors, FIRST acknowledge what they tried to say, then clearly show the correction.
+- After correcting, ask the student to rephrase or repeat the corrected form BEFORE moving to new content.
+- Use a format like: "¡Casi! You said '[incorrect]', but it should be '[correct]' because [reason]. Can you try saying it again?"
+- Only move to new questions or topics AFTER the student demonstrates understanding of the correction.
+- If the student's retry still has errors, gently correct again but simplify your explanation.
+- When the student successfully corrects themselves, be extra encouraging: "¡Perfecto! That's exactly right!"
+- Set "awaiting_correction" to true in your response when you've asked the student to retry a correction.
+- Set "awaiting_correction" to false when the student has successfully corrected themselves or when there are no corrections needed.
+
 You MUST respond with valid JSON matching this exact schema (no markdown fences, no extra text):
 {
   "reply": "Your conversational response in Spanish",
@@ -72,27 +84,44 @@ You MUST respond with valid JSON matching this exact schema (no markdown fences,
       {
         "word": "a Spanish word used in your reply or the user's message",
         "definition": "English definition",
-        "example": "example sentence using the word"
+        "example": "example sentence using the word",
+        "category": "one of: greetings, food, travel, numbers, family, work, nature, emotions, shopping, health, general"
       }
     ],
-    "difficulty_signal": "too_easy" | "on_track" | "too_hard"
+    "difficulty_signal": "too_easy" | "on_track" | "too_hard",
+    "awaiting_correction": false
   }
 }
 
 Guidelines:
 - Keep corrections helpful, not overwhelming. Focus on the most important errors.
-- Include 1-3 vocab notes per response highlighting useful words.
+- Include 1-3 vocab notes per response highlighting useful words, always with a category.
 - Set difficulty_signal based on how well the student is performing at the current level.
 - If the user writes in English, gently encourage them to try in Spanish.
 - Be conversational and natural. Ask follow-up questions to keep the conversation going.
-- If there are no errors to correct, return an empty corrections array.`;
+- If there are no errors to correct, return an empty corrections array and set awaiting_correction to false.`;
 
   if (userId) {
     try {
       const dueVocab = await getVocabDueForReview(userId, language);
-      const words = dueVocab.slice(0, 5).map((v) => v.word);
-      if (words.length > 0) {
-        return base + `\n\nWords to naturally reinforce this session: [${words.join(", ")}]`;
+      if (dueVocab.length > 0) {
+        // Prioritize lapsed words (state=3) and low stability items
+        const lapsed = dueVocab.filter((v) => v.state === 3).slice(0, 3);
+        const others = dueVocab
+          .filter((v) => v.state !== 3)
+          .sort((a, b) => a.stability - b.stability)
+          .slice(0, 5 - lapsed.length);
+        const priorityWords = [...lapsed, ...others];
+
+        if (priorityWords.length > 0) {
+          const wordList = priorityWords
+            .map((v) => `${v.word} (${v.category}, stability: ${v.stability.toFixed(1)})`)
+            .join(", ");
+          return (
+            base +
+            `\n\nVOCABULARY REINFORCEMENT: Naturally weave these words into the conversation — they need practice: [${wordList}]. Prioritize words with lower stability as the student is more likely to forget them.`
+          );
+        }
       }
     } catch {
       // Non-critical — continue without vocab reinforcement
@@ -146,6 +175,8 @@ export async function getTutorResponse(
       parsed.feedback.vocab_notes = parsed.feedback.vocab_notes || [];
       parsed.feedback.difficulty_signal =
         parsed.feedback.difficulty_signal || "on_track";
+      parsed.feedback.awaiting_correction =
+        parsed.feedback.awaiting_correction || false;
 
       return parsed;
     } catch (err) {
@@ -160,6 +191,7 @@ export async function getTutorResponse(
             corrections: [],
             vocab_notes: [],
             difficulty_signal: "on_track",
+            awaiting_correction: false,
           },
         };
       }

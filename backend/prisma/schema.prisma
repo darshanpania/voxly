@@ -30,15 +30,16 @@ model UserLanguageProfile {
 }
 
 model Session {
-  id         String    @id @default(cuid())
+  id         String          @id @default(cuid())
   userId     String
-  language   String    @default("es")
-  difficulty String    @default("A1")
-  mode       String    @default("helper")
-  createdAt  DateTime  @default(now())
+  language   String          @default("es")
+  difficulty String          @default("A1")
+  mode       String          @default("helper")
+  createdAt  DateTime        @default(now())
   endedAt    DateTime?
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages   Message[]
+  summary    SessionSummary?
 }
 
 model Message {
@@ -59,18 +60,42 @@ model MessageFeedback {
   message     Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 }
 
+model SessionSummary {
+  id            String  @id @default(cuid())
+  sessionId     String  @unique
+  topics        Json
+  mistakes      Json
+  newVocab      Json
+  encouragement String
+  session       Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
 model VocabularyItem {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   userId          String
   language        String
   word            String
   definition      String
   exampleSentence String?
-  timesSeen       Int      @default(1)
-  timesCorrect    Int      @default(0)
-  easeFactor      Float    @default(2.5)
-  nextReviewAt    DateTime @default(now())
-  createdAt       DateTime @default(now())
+  category        String    @default("general")
+  sessionId       String?
+
+  // FSRS fields
+  stability     Float    @default(0)
+  difficulty    Float    @default(0)
+  elapsedDays   Int      @default(0)
+  scheduledDays Int      @default(0)
+  reps          Int      @default(0)
+  lapses        Int      @default(0)
+  state         Int      @default(0) // 0=New, 1=Learning, 2=Review, 3=Relearning
+  lastReviewAt  DateTime?
+  nextReviewAt  DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  // Legacy fields kept for backward compat
+  timesSeen    Int   @default(1)
+  timesCorrect Int   @default(0)
+  easeFactor   Float @default(2.5)
 
   @@unique([userId, language, word])
 }

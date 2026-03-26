@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
+import { schedule, booleanToRating, State, type FSRSCard, type Rating } from "./fsrs.js";
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -16,6 +17,12 @@ export interface VocabStats {
   words_mastered: number;
   avg_difficulty: number;
   top_mistakes: string[];
+  by_state: {
+    new: number;
+    learning: number;
+    review: number;
+    relearning: number;
+  };
 }
 
 export interface ProgressStats {
@@ -29,6 +36,19 @@ export interface ProgressStats {
 export async function getSessionSummary(
   sessionId: string,
 ): Promise<SessionSummary> {
+  // Check cache first
+  const cached = await prisma.sessionSummary.findUnique({
+    where: { sessionId },
+  });
+  if (cached) {
+    return {
+      topics: cached.topics as string[],
+      mistakes: cached.mistakes as string[],
+      newVocab: cached.newVocab as string[],
+      encouragement: cached.encouragement,
+    };
+  }
+
   const messages = await prisma.message.findMany({
     where: { sessionId },
     orderBy: { createdAt: "asc" },
@@ -69,22 +89,41 @@ Return valid JSON only.`,
   });
 
   const raw = completion.choices[0]?.message?.content;
+  let result: SessionSummary;
+
   if (!raw) {
-    return {
+    result = {
       topics: [],
       mistakes: [],
       newVocab: [],
       encouragement: "Great session! Keep practicing!",
     };
+  } else {
+    const parsed = JSON.parse(raw);
+    result = {
+      topics: parsed.topics || [],
+      mistakes: parsed.mistakes || [],
+      newVocab: parsed.newVocab || [],
+      encouragement: parsed.encouragement || "Great session! Keep practicing!",
+    };
   }
 
-  const parsed = JSON.parse(raw);
-  return {
-    topics: parsed.topics || [],
-    mistakes: parsed.mistakes || [],
-    newVocab: parsed.newVocab || [],
-    encouragement: parsed.encouragement || "Great session! Keep practicing!",
-  };
+  // Cache the summary
+  try {
+    await prisma.sessionSummary.create({
+      data: {
+        sessionId,
+        topics: result.topics as any,
+        mistakes: result.mistakes as any,
+        newVocab: result.newVocab as any,
+        encouragement: result.encouragement,
+      },
+    });
+  } catch {
+    // Ignore duplicate key errors (race condition)
+  }
+
+  return result;
 }
 
 export async function getVocabDueForReview(userId: string, language: string) {
@@ -92,10 +131,48 @@ export async function getVocabDueForReview(userId: string, language: string) {
     where: {
       userId,
       language,
-      nextReviewAt: { lte: new Date() },
+      OR: [
+        { state: State.New },
+        { nextReviewAt: { lte: new Date() } },
+      ],
     },
-    orderBy: { nextReviewAt: "asc" },
+    orderBy: [
+      { state: "asc" }, // New items first
+      { nextReviewAt: "asc" },
+    ],
     take: 20,
+  });
+}
+
+export async function getAllVocabulary(
+  userId: string,
+  language: string,
+  options?: {
+    category?: string;
+    state?: number;
+    sort?: string;
+  },
+) {
+  const where: any = { userId, language };
+  if (options?.category && options.category !== "all") {
+    where.category = options.category;
+  }
+  if (options?.state !== undefined && options.state >= 0) {
+    where.state = options.state;
+  }
+
+  const orderBy: any =
+    options?.sort === "word"
+      ? { word: "asc" }
+      : options?.sort === "stability"
+        ? { stability: "desc" }
+        : options?.sort === "created"
+          ? { createdAt: "desc" }
+          : { nextReviewAt: "asc" };
+
+  return prisma.vocabularyItem.findMany({
+    where,
+    orderBy,
   });
 }
 
@@ -110,20 +187,32 @@ export async function getVocabStats(
       timesCorrect: true,
       timesSeen: true,
       easeFactor: true,
+      state: true,
+      stability: true,
+      difficulty: true,
     },
   });
 
   const total_words = allVocab.length;
-  const words_mastered = allVocab.filter((v) => v.timesCorrect >= 3).length;
+  const words_mastered = allVocab.filter(
+    (v) => v.state === State.Review && v.stability > 21,
+  ).length;
   const avg_difficulty =
     total_words > 0
-      ? allVocab.reduce((sum, v) => sum + v.easeFactor, 0) / total_words
+      ? allVocab.reduce((sum, v) => sum + v.difficulty, 0) / total_words
       : 0;
   const top_mistakes = allVocab
     .filter((v) => v.timesCorrect === 0 && v.timesSeen > 1)
     .map((v) => v.word);
 
-  return { total_words, words_mastered, avg_difficulty, top_mistakes };
+  const by_state = {
+    new: allVocab.filter((v) => v.state === State.New).length,
+    learning: allVocab.filter((v) => v.state === State.Learning).length,
+    review: allVocab.filter((v) => v.state === State.Review).length,
+    relearning: allVocab.filter((v) => v.state === State.Relearning).length,
+  };
+
+  return { total_words, words_mastered, avg_difficulty, top_mistakes, by_state };
 }
 
 export async function getProgressStats(
@@ -195,33 +284,59 @@ export async function getProgressStats(
   };
 }
 
-export async function updateVocabAfterReview(
+/**
+ * Review a vocabulary item using FSRS scheduling.
+ */
+export async function reviewVocabFSRS(
   itemId: string,
-  wasCorrect: boolean,
+  rating: Rating,
 ) {
   const item = await prisma.vocabularyItem.findUnique({
     where: { id: itemId },
   });
   if (!item) throw new Error("Vocabulary item not found");
 
-  const newEaseFactor = wasCorrect
-    ? Math.max(1.3, item.easeFactor + 0.1)
-    : Math.max(1.3, item.easeFactor - 0.2);
+  const card: FSRSCard = {
+    stability: item.stability,
+    difficulty: item.difficulty,
+    elapsedDays: item.elapsedDays,
+    scheduledDays: item.scheduledDays,
+    reps: item.reps,
+    lapses: item.lapses,
+    state: item.state as any,
+    lastReviewAt: item.lastReviewAt,
+  };
 
-  const daysUntilReview = wasCorrect
-    ? (item.timesSeen + 1) * newEaseFactor
-    : 1;
+  const now = new Date();
+  const result = schedule(card, rating, now);
 
-  const nextReviewAt = new Date();
-  nextReviewAt.setDate(nextReviewAt.getDate() + daysUntilReview);
+  const wasCorrect = rating >= 3; // Good or Easy
 
   return prisma.vocabularyItem.update({
     where: { id: itemId },
     data: {
-      easeFactor: newEaseFactor,
-      nextReviewAt,
+      stability: result.card.stability,
+      difficulty: result.card.difficulty,
+      elapsedDays: result.card.elapsedDays,
+      scheduledDays: result.card.scheduledDays,
+      reps: result.card.reps,
+      lapses: result.card.lapses,
+      state: result.card.state,
+      lastReviewAt: result.card.lastReviewAt,
+      nextReviewAt: result.nextReviewAt,
+      // Legacy fields
       timesSeen: { increment: 1 },
       ...(wasCorrect ? { timesCorrect: { increment: 1 } } : {}),
     },
   });
+}
+
+/**
+ * Legacy wrapper: accept boolean and convert to FSRS rating.
+ */
+export async function updateVocabAfterReview(
+  itemId: string,
+  wasCorrect: boolean,
+) {
+  return reviewVocabFSRS(itemId, booleanToRating(wasCorrect));
 }
