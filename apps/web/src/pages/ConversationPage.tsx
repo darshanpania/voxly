@@ -11,6 +11,8 @@ import * as api from "../lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
+
 export function ConversationPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -21,6 +23,9 @@ export function ConversationPage() {
   const [showFeedback, setShowFeedback] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
+  const [levelBanner, setLevelBanner] = useState<{ direction: "up" | "down"; targetLevel: string } | null>(null);
+  const consecutiveSignalRef = useRef<{ signal: string; count: number }>({ signal: "", count: 0 });
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const tts = useTTS();
 
@@ -61,6 +66,32 @@ export function ConversationPage() {
         { ...res.assistantMessage, feedback: res.feedback, replyLines: res.assistantMessage.replyLines },
       ]);
 
+      // Track consecutive difficulty signals for level-up/down suggestions
+      const signal = res.difficulty_signal;
+      if (signal && signal !== "on_track") {
+        const prev = consecutiveSignalRef.current;
+        if (prev.signal === signal) {
+          prev.count += 1;
+        } else {
+          consecutiveSignalRef.current = { signal, count: 1 };
+        }
+
+        const { count } = consecutiveSignalRef.current;
+        if (count >= 3 && !res.feedback?.awaitingCorrection) {
+          const currentIdx = CEFR_LEVELS.indexOf(difficulty);
+          if (signal === "too_easy" && currentIdx < CEFR_LEVELS.length - 1) {
+            setLevelBanner({ direction: "up", targetLevel: CEFR_LEVELS[currentIdx + 1] });
+          } else if (signal === "too_hard" && currentIdx > 0) {
+            setLevelBanner({ direction: "down", targetLevel: CEFR_LEVELS[currentIdx - 1] });
+          }
+          // Auto-dismiss after 30 seconds
+          clearTimeout(bannerTimerRef.current);
+          bannerTimerRef.current = setTimeout(() => setLevelBanner(null), 30_000);
+        }
+      } else {
+        consecutiveSignalRef.current = { signal: "", count: 0 };
+      }
+
       // Auto-play assistant reply
       tts.play(res.assistantMessage.content);
     } catch (err) {
@@ -86,8 +117,13 @@ export function ConversationPage() {
     }
   };
 
-  const handleEndSession = () => {
+  const handleEndSession = async () => {
     if (sessionId && messages.length > 0) {
+      try {
+        await api.endSession(sessionId);
+      } catch {
+        // Don't block UI if the API call fails
+      }
       setSessionEnded(true);
     }
   };
@@ -97,11 +133,25 @@ export function ConversationPage() {
     setMessages([]);
     setError(null);
     setSessionEnded(false);
+    setLevelBanner(null);
+    consecutiveSignalRef.current = { signal: "", count: 0 };
+    clearTimeout(bannerTimerRef.current);
   };
 
   const handleDifficultyChange = (d: string) => {
     setDifficulty(d);
     handleNewSession();
+  };
+
+  const handleLevelBannerConfirm = () => {
+    if (levelBanner) {
+      handleDifficultyChange(levelBanner.targetLevel);
+      setLevelBanner(null);
+    }
+  };
+
+  const handleLevelBannerDismiss = () => {
+    setLevelBanner(null);
   };
 
   const handleModeChange = (m: string) => {
@@ -202,6 +252,25 @@ export function ConversationPage() {
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Difficulty level-up/down banner */}
+      {levelBanner && !awaitingCorrection && (
+        <div className="animate-slide-up bg-surface-2 border border-border rounded-lg mx-3 mb-2 p-3 flex items-center justify-between text-sm">
+          <span className="text-text-muted">
+            {levelBanner.direction === "up"
+              ? `You're doing great — ready to try ${levelBanner.targetLevel}?`
+              : `This seems challenging — want to try ${levelBanner.targetLevel}?`}
+          </span>
+          <div className="flex gap-2 ml-3 shrink-0">
+            <Button size="sm" onClick={handleLevelBannerConfirm}>
+              {levelBanner.direction === "up" ? "Level Up" : "Level Down"}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleLevelBannerDismiss}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Input bar */}
       <div className="bg-surface/80 backdrop-blur-xl border-t border-border p-3 flex items-end gap-2">

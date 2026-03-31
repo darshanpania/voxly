@@ -92,6 +92,26 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     return session;
   });
 
+  // PATCH /sessions/:id — mark session as ended.
+  // endedAt is essential for progress stats: it lets us compute session duration
+  // (total_minutes, streak_days) and distinguish active vs. completed sessions.
+  app.patch<{ Params: { id: string } }>("/sessions/:id", async (request, reply) => {
+    const userId = request.user.sub;
+    const { id } = request.params;
+    const body = z.object({ endedAt: z.string().datetime() }).parse(request.body);
+
+    const session = await prisma.session.findUnique({ where: { id } });
+    if (!session || session.userId !== userId) {
+      return reply.code(404).send({ error: "Session not found" });
+    }
+
+    const updated = await prisma.session.update({
+      where: { id },
+      data: { endedAt: body.endedAt },
+    });
+    return updated;
+  });
+
   // POST /sessions/:id/messages
   app.post<{ Params: { id: string } }>("/sessions/:id/messages", async (request, reply) => {
     const userId = request.user.sub;
@@ -165,6 +185,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       userMessage,
       assistantMessage: { ...assistantMessage, feedback, replyLines: tutorResponse.reply_lines },
       feedback,
+      difficulty_signal: tutorResponse.feedback.difficulty_signal,
     };
   });
 }

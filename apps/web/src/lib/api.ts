@@ -82,6 +82,7 @@ export interface SendMessageResponse {
   userMessage: Message;
   assistantMessage: Message;
   feedback: MessageFeedback | null;
+  difficulty_signal?: "too_easy" | "on_track" | "too_hard";
 }
 
 export function createSession(data: {
@@ -110,6 +111,14 @@ export function sendMessage(
   return request(`/sessions/${sessionId}/messages`, {
     method: "POST",
     body: JSON.stringify({ content }),
+  });
+}
+
+// endedAt is used to calculate session duration for progress stats (total_minutes, streaks)
+export function endSession(sessionId: string): Promise<Session> {
+  return request(`/sessions/${sessionId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ endedAt: new Date().toISOString() }),
   });
 }
 
