@@ -1,24 +1,34 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { ArrowLeft, Clock, ChevronDown, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, Clock, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { SessionSummaryCard } from "../components/SessionSummaryCard";
+import { MessageBubble } from "../components/MessageBubble";
 import type { Session } from "../lib/api";
 import * as api from "../lib/api";
 
-function formatDuration(createdAt: string, endedAt: string | null): string {
-  const start = new Date(createdAt).getTime();
-  const end = endedAt ? new Date(endedAt).getTime() : Date.now();
-  const mins = Math.round((end - start) / 60000);
-  return `${mins} min`;
+function formatDuration(session: Session): string {
+  // Prefer the backend-provided durationMinutes when available.
+  if (typeof session.durationMinutes === "number") {
+    return `${session.durationMinutes} min`;
+  }
+  // Fall back to computing from endedAt only when the session has ended.
+  if (session.endedAt) {
+    const mins = Math.round(
+      (new Date(session.endedAt).getTime() -
+        new Date(session.createdAt).getTime()) /
+        60000,
+    );
+    return `${mins} min`;
+  }
+  // Un-ended session: no meaningful duration to show.
+  return "—";
 }
 
-export function SessionHistoryPage() {
+function SessionList() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -28,12 +38,133 @@ export function SessionHistoryPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (sessions.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
+        <Clock className="w-12 h-12 text-text-dim opacity-40" />
+        <p className="text-text-muted text-sm">No sessions yet</p>
+        <Link
+          to="/"
+          className="text-primary text-sm hover:text-primary-hover transition-colors"
+        >
+          Start your first conversation
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 p-4 overflow-y-auto flex-1">
+      {sessions.map((s) => (
+        <Link key={s.id} to={`/history/${s.id}`} className="block">
+          <Card className="hover:border-primary/30 transition-colors cursor-pointer p-3">
+            <div className="flex items-center justify-between gap-3">
+              {/* Left: language + difficulty + mode */}
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-semibold text-sm text-text truncate">
+                  {s.language.toUpperCase()} · {s.difficulty}
+                </span>
+                <Badge variant="secondary">{s.mode}</Badge>
+              </div>
+
+              {/* Right: date, duration, message count */}
+              <div className="flex items-center gap-3 shrink-0">
+                <span className="text-sm text-text-muted">
+                  {new Date(s.createdAt).toLocaleDateString()}
+                </span>
+                <span className="text-sm text-text-dim">
+                  {formatDuration(s)}
+                </span>
+                <span className="text-sm text-text-dim">
+                  {s._count?.messages ?? 0} msgs
+                </span>
+              </div>
+            </div>
+          </Card>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function SessionDetail() {
+  const { id } = useParams<{ id: string }>();
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!id) return;
+    api
+      .getSession(id)
+      .then(setSession)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-danger text-sm">Session not found</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Session detail header bar */}
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium text-text">
+            {session.language.toUpperCase()}
+          </span>
+          <span className="text-text-dim text-sm">·</span>
+          <Badge variant="secondary">{session.difficulty}</Badge>
+          <Badge variant="default">{session.mode}</Badge>
+        </div>
+        <span className="text-sm text-text-muted shrink-0">
+          {new Date(session.createdAt).toLocaleDateString()}
+        </span>
+      </div>
+
+      {/* Stacked: session summary, then full transcript */}
+      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+        <SessionSummaryCard sessionId={session.id} />
+
+        <div className="flex flex-col gap-2">
+          {session.messages?.map((m) => (
+            <MessageBubble key={m.id} message={m} showFeedback={true} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function SessionHistoryPage() {
+  const { id } = useParams();
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-4 py-4 border-b border-border flex items-center gap-3 shrink-0">
         <Link
-          to="/"
+          to={id ? "/history" : "/"}
           className="flex items-center gap-1 text-sm text-text-muted hover:text-text transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -45,71 +176,7 @@ export function SessionHistoryPage() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-6 h-6 text-primary animate-spin" />
-        </div>
-      ) : sessions.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
-          <Clock className="w-12 h-12 text-text-dim opacity-40" />
-          <p className="text-text-muted text-sm">No sessions yet</p>
-          <Link
-            to="/"
-            className="text-primary text-sm hover:text-primary-hover transition-colors"
-          >
-            Start your first conversation
-          </Link>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2 p-4 overflow-y-auto flex-1">
-          {sessions.map((s) => {
-            const isExpanded = expandedId === s.id;
-            return (
-              <Card key={s.id} className="overflow-hidden p-0">
-                {/* Header row */}
-                <div
-                  className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer hover:bg-surface-2/50 transition-colors"
-                  onClick={() => setExpandedId(isExpanded ? null : s.id)}
-                >
-                  {/* Left: language + difficulty + mode */}
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-medium text-text truncate">
-                      {s.language.toUpperCase()} · {s.difficulty}
-                    </span>
-                    <Badge variant="secondary">{s.mode}</Badge>
-                  </div>
-
-                  {/* Right: date, duration, count, chevron */}
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-sm text-text-muted">
-                      {new Date(s.createdAt).toLocaleDateString()}
-                    </span>
-                    <span className="text-sm text-text-dim">
-                      {formatDuration(s.createdAt, s.endedAt)}
-                    </span>
-                    <span className="text-sm text-text-dim">
-                      {s._count?.messages ?? 0} msgs
-                    </span>
-                    <ChevronDown
-                      className={cn(
-                        "w-4 h-4 text-text-dim transition-transform duration-200",
-                        isExpanded && "rotate-180"
-                      )}
-                    />
-                  </div>
-                </div>
-
-                {/* Expanded: session summary */}
-                {isExpanded && (
-                  <div className="border-t border-border pt-3 px-4 pb-4">
-                    <SessionSummaryCard sessionId={s.id} />
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
-      )}
+      {id ? <SessionDetail /> : <SessionList />}
     </div>
   );
 }

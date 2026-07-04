@@ -1,6 +1,13 @@
-import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Link,
+  Navigate,
+  useLocation,
+  useParams,
+} from "react-router-dom";
 import { ConversationPage } from "./pages/ConversationPage";
-import { SessionsPage } from "./pages/SessionsPage";
 import { ProgressPage } from "./pages/ProgressPage";
 import { VocabularyPage } from "./pages/VocabularyPage";
 import { SessionHistoryPage } from "./pages/SessionHistoryPage";
@@ -17,6 +24,12 @@ const navLinks = [
   { to: "/vocabulary", label: "Vocabulary", icon: BookOpen },
   { to: "/history", label: "History", icon: Clock },
 ];
+
+// Redirect legacy /sessions/:id links to the merged /history/:id detail view.
+function SessionDetailRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/history/${id}`} replace />;
+}
 
 function BottomNav() {
   const location = useLocation();
@@ -54,11 +67,13 @@ function AppShell() {
       <main className="flex-1 overflow-hidden">
         <Routes>
           <Route path="/" element={<ConversationPage />} />
-          <Route path="/sessions" element={<SessionsPage />} />
-          <Route path="/sessions/:id" element={<SessionsPage />} />
           <Route path="/progress" element={<ProgressPage />} />
           <Route path="/vocabulary" element={<VocabularyPage />} />
           <Route path="/history" element={<SessionHistoryPage />} />
+          <Route path="/history/:id" element={<SessionHistoryPage />} />
+          {/* Legacy routes: redirect to the merged /history experience */}
+          <Route path="/sessions" element={<Navigate to="/history" replace />} />
+          <Route path="/sessions/:id" element={<SessionDetailRedirect />} />
         </Routes>
       </main>
       <BottomNav />

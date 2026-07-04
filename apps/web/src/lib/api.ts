@@ -38,6 +38,7 @@ export interface Session {
   mode: string;
   createdAt: string;
   endedAt: string | null;
+  durationMinutes?: number;
   messages?: Message[];
   _count?: { messages: number };
 }

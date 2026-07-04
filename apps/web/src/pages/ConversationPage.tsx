@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
-import { Send, List } from "lucide-react";
+import { Send } from "lucide-react";
 import { SessionHeader } from "../components/SessionHeader";
 import { MessageBubble } from "../components/MessageBubble";
 import { VoiceButton } from "../components/VoiceButton";
@@ -294,12 +293,6 @@ export function ConversationPage() {
             New Session
           </Button>
         )}
-
-        <Button variant="ghost" size="icon" asChild className="shrink-0">
-          <Link to="/sessions" title="Past Sessions">
-            <List size={18} />
-          </Link>
-        </Button>
 
         <textarea
           className={cn(
