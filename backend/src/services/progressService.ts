@@ -218,6 +218,7 @@ export async function getVocabStats(
       state: true,
       stability: true,
       difficulty: true,
+      lapses: true,
     },
   });
 
@@ -230,7 +231,9 @@ export async function getVocabStats(
       ? allVocab.reduce((sum, v) => sum + v.difficulty, 0) / total_words
       : 0;
   const top_mistakes = allVocab
-    .filter((v) => v.timesCorrect === 0 && v.timesSeen > 1)
+    .filter((v) => v.lapses >= 1 || v.state === State.Relearning)
+    .sort((a, b) => b.lapses - a.lapses || a.stability - b.stability)
+    .slice(0, 10)
     .map((v) => v.word);
 
   const by_state = {
@@ -246,7 +249,13 @@ export async function getVocabStats(
 export async function getProgressStats(
   userId: string,
   language: string,
+  tzOffsetMinutes = 0,
 ): Promise<ProgressStats> {
+  // Local day key (YYYY-MM-DD) for a given instant, shifted by the client's
+  // timezone offset (JS getTimezoneOffset() convention: UTC minus local).
+  const dayKey = (t: Date): string =>
+    new Date(t.getTime() - tzOffsetMinutes * 60000).toISOString().slice(0, 10);
+
   const sessions = await prisma.session.findMany({
     where: { userId, language },
     orderBy: { createdAt: "asc" },
@@ -270,15 +279,12 @@ export async function getProgressStats(
   }, 0);
 
   // Streak: consecutive days ending today with at least 1 session
-  const sessionDays = new Set(
-    sessions.map((s) => s.createdAt.toISOString().slice(0, 10)),
-  );
+  const sessionDays = new Set(sessions.map((s) => dayKey(s.createdAt)));
   let streak_days = 0;
   const today = new Date();
   for (let i = 0; i < 365; i++) {
-    const d = new Date(today);
-    d.setUTCDate(d.getUTCDate() - i);
-    const key = d.toISOString().slice(0, 10);
+    const d = new Date(today.getTime() - i * 86400000);
+    const key = dayKey(d);
     if (sessionDays.has(key)) {
       streak_days++;
     } else {
@@ -300,7 +306,7 @@ export async function getProgressStats(
 
   const dailyCounts = new Map<string, number>();
   for (const v of vocabItems) {
-    const day = v.createdAt.toISOString().slice(0, 10);
+    const day = dayKey(v.createdAt);
     dailyCounts.set(day, (dailyCounts.get(day) || 0) + 1);
   }
 

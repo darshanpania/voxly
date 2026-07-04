@@ -104,13 +104,17 @@ export async function progressRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // GET /progress?language=es
-  app.get<{ Querystring: { language?: string } }>(
+  // GET /progress?language=es&tzOffset=-330
+  app.get<{ Querystring: { language?: string; tzOffset?: string } }>(
     "/progress",
     async (request) => {
       const userId = request.user.sub;
       const language = request.query.language || "es";
-      return getProgressStats(userId, language);
+      const parsed = parseInt(request.query.tzOffset ?? "", 10);
+      const tzOffset = Number.isNaN(parsed)
+        ? 0
+        : Math.max(-840, Math.min(840, parsed));
+      return getProgressStats(userId, language, tzOffset);
     },
   );
 }

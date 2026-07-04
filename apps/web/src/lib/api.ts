@@ -213,7 +213,8 @@ export function getVocabStats(language = "es"): Promise<VocabStats> {
 }
 
 export function getProgress(language = "es"): Promise<ProgressStats> {
-  return request(`/progress?language=${language}`);
+  const tzOffset = new Date().getTimezoneOffset();
+  return request(`/progress?language=${language}&tzOffset=${tzOffset}`);
 }
 
 export function reviewVocab(
