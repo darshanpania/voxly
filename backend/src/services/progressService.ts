@@ -33,6 +33,34 @@ export interface ProgressStats {
   vocab_growth: Array<{ date: string; count: number }>;
 }
 
+// Cap applied to endedAt so a session left open in a tab (ended long after the
+// last message) can't inflate its duration beyond the actual conversation.
+const ENDED_AT_GRACE_MS = 5 * 60 * 1000;
+
+/**
+ * Derive a session's duration from message activity rather than wall clock.
+ *
+ * - Sessions with no messages contribute 0 (lastMessageAt is null).
+ * - When endedAt is present, use it but cap it at lastMessageAt + 5 minutes to
+ *   bound tab-left-open inflation.
+ * - When endedAt is absent, use lastMessageAt as the end.
+ * - Never returns a negative duration.
+ */
+export function sessionDurationMs(
+  createdAt: Date,
+  endedAt: Date | null,
+  lastMessageAt: Date | null,
+): number {
+  if (!lastMessageAt) return 0;
+
+  const activityEnd = lastMessageAt.getTime();
+  const end = endedAt
+    ? Math.min(endedAt.getTime(), activityEnd + ENDED_AT_GRACE_MS)
+    : activityEnd;
+
+  return Math.max(0, end - createdAt.getTime());
+}
+
 export async function getSessionSummary(
   sessionId: string,
 ): Promise<SessionSummary> {
@@ -222,15 +250,23 @@ export async function getProgressStats(
   const sessions = await prisma.session.findMany({
     where: { userId, language },
     orderBy: { createdAt: "asc" },
-    select: { createdAt: true, endedAt: true, difficulty: true },
+    select: {
+      createdAt: true,
+      endedAt: true,
+      difficulty: true,
+      messages: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { createdAt: true },
+      },
+    },
   });
 
   const sessions_count = sessions.length;
 
-  const now = new Date();
   const total_minutes = sessions.reduce((sum, s) => {
-    const end = s.endedAt || now;
-    return sum + (end.getTime() - s.createdAt.getTime()) / 60000;
+    const lastMessageAt = s.messages[0]?.createdAt ?? null;
+    return sum + sessionDurationMs(s.createdAt, s.endedAt, lastMessageAt) / 60000;
   }, 0);
 
   // Streak: consecutive days ending today with at least 1 session

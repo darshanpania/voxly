@@ -5,6 +5,7 @@ import { verifySupabaseJwt } from "../middleware/auth.js";
 import { getTutorResponse } from "../services/llmService.js";
 import { saveFeedbackAndVocab } from "../services/feedbackParser.js";
 import { checkMessageAllowance } from "../services/usageService.js";
+import { sessionDurationMs } from "../services/progressService.js";
 
 const createSessionSchema = z.object({
   language: z.string().default("es"),
@@ -65,10 +66,25 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       orderBy: { createdAt: "desc" },
       include: {
         _count: { select: { messages: true } },
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { createdAt: true },
+        },
       },
     });
 
-    return sessions;
+    return sessions.map((session) => {
+      const { messages, ...rest } = session;
+      const lastMessageAt = messages[0]?.createdAt ?? null;
+      return {
+        ...rest,
+        durationMinutes: Math.round(
+          sessionDurationMs(session.createdAt, session.endedAt, lastMessageAt) /
+            60000,
+        ),
+      };
+    });
   });
 
   // GET /sessions/:id
