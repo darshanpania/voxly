@@ -4,9 +4,11 @@ import { SessionsPage } from "./pages/SessionsPage";
 import { ProgressPage } from "./pages/ProgressPage";
 import { VocabularyPage } from "./pages/VocabularyPage";
 import { SessionHistoryPage } from "./pages/SessionHistoryPage";
-import { MessageCircle, BarChart3, BookOpen, Clock } from "lucide-react";
+import { LoginPage } from "./pages/LoginPage";
+import { MessageCircle, BarChart3, BookOpen, Clock, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { TopBar } from "@/components/TopBar";
 
 const navLinks = [
@@ -45,24 +47,50 @@ function BottomNav() {
   );
 }
 
+function AppShell() {
+  return (
+    <div className="flex flex-col h-screen bg-background text-text">
+      <TopBar />
+      <main className="flex-1 overflow-hidden">
+        <Routes>
+          <Route path="/" element={<ConversationPage />} />
+          <Route path="/sessions" element={<SessionsPage />} />
+          <Route path="/sessions/:id" element={<SessionsPage />} />
+          <Route path="/progress" element={<ProgressPage />} />
+          <Route path="/vocabulary" element={<VocabularyPage />} />
+          <Route path="/history" element={<SessionHistoryPage />} />
+        </Routes>
+      </main>
+      <BottomNav />
+    </div>
+  );
+}
+
+function AuthGate() {
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background text-text">
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginPage />;
+  }
+
+  return <AppShell />;
+}
+
 export function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
-        <div className="flex flex-col h-screen bg-background text-text">
-          <TopBar />
-          <main className="flex-1 overflow-hidden">
-            <Routes>
-              <Route path="/" element={<ConversationPage />} />
-              <Route path="/sessions" element={<SessionsPage />} />
-              <Route path="/sessions/:id" element={<SessionsPage />} />
-              <Route path="/progress" element={<ProgressPage />} />
-              <Route path="/vocabulary" element={<VocabularyPage />} />
-              <Route path="/history" element={<SessionHistoryPage />} />
-            </Routes>
-          </main>
-          <BottomNav />
-        </div>
+        <AuthProvider>
+          <AuthGate />
+        </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
   );
