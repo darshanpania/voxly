@@ -8,13 +8,30 @@ interface Props {
 }
 
 function TranslatableLine({ line }: { line: ReplyLine }) {
-  const [showTranslation, setShowTranslation] = useState(false);
+  // `pinned` is toggled by click/tap and stays until clicked again.
+  // `hover` is a desktop-only enhancement that shows on mouse-over.
+  const [pinned, setPinned] = useState(false);
+  const [hover, setHover] = useState(false);
+  const showTranslation = pinned || hover;
+
+  const toggle = () => setPinned((p) => !p);
 
   return (
     <span
-      className="translatable-line"
-      onMouseEnter={() => setShowTranslation(true)}
-      onMouseLeave={() => setShowTranslation(false)}
+      className="translatable-line select-none cursor-pointer"
+      role="button"
+      tabIndex={0}
+      aria-pressed={pinned}
+      aria-label={`Show English translation: ${line.en}`}
+      onClick={toggle}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggle();
+        }
+      }}
     >
       {line.es}
       {showTranslation && (
