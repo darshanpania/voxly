@@ -115,6 +115,93 @@ export function sendMessage(
   });
 }
 
+/**
+ * Streaming variant of {@link sendMessage} (#20). Sends the message over SSE and
+ * invokes `onDelta` with each chunk of Sofía's visible reply as it arrives, then
+ * resolves with the same payload shape as {@link sendMessage} once the server
+ * emits its `complete` event. Rejects on `error` events, non-OK responses
+ * (401/404/429), or a stream that ends without completing.
+ */
+export async function sendMessageStream(
+  sessionId: string,
+  content: string,
+  onDelta: (text: string) => void,
+): Promise<SendMessageResponse> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_URL}/sessions/${sessionId}/messages/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...headers,
+    },
+    body: JSON.stringify({ content }),
+  });
+
+  // Non-OK (401/404/429/...) — parse the JSON error body like request() does.
+  if (!res.ok || !res.body) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Request failed: ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: SendMessageResponse | null = null;
+  let streamError: Error | null = null;
+
+  // Each SSE frame is a group of `event:`/`data:` lines terminated by a blank
+  // line. Frames can be split across network chunks, so we buffer until `\n\n`.
+  const handleFrame = (frame: string) => {
+    let event = "";
+    let data = "";
+    for (const line of frame.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data += line.slice(5).trim();
+    }
+    if (!event) return;
+
+    if (event === "delta") {
+      try {
+        const parsed = JSON.parse(data);
+        if (typeof parsed.text === "string") onDelta(parsed.text);
+      } catch {
+        // Ignore a malformed delta rather than aborting the whole stream.
+      }
+    } else if (event === "complete") {
+      result = JSON.parse(data) as SendMessageResponse;
+    } else if (event === "error") {
+      let message = "Something went wrong";
+      try {
+        message = JSON.parse(data).error || message;
+      } catch {
+        // keep the generic message
+      }
+      streamError = new Error(message);
+    }
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sep: number;
+    while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      if (frame.trim()) handleFrame(frame);
+    }
+  }
+  // Flush any trailing frame that wasn't newline-terminated.
+  buffer += decoder.decode();
+  if (buffer.trim()) handleFrame(buffer);
+
+  if (streamError) throw streamError;
+  if (result) return result;
+  throw new Error(
+    "Sofia couldn't respond just now. Please try sending your message again.",
+  );
+}
+
 // endedAt is used to calculate session duration for progress stats (total_minutes, streaks)
 export function endSession(sessionId: string): Promise<Session> {
   return request(`/sessions/${sessionId}`, {

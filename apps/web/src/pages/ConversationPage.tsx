@@ -14,6 +14,10 @@ const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
 const LANGUAGE = "es";
 const ACTIVE_SESSION_KEY = "voxly:activeSession";
 
+// Temp ids for the optimistic bubbles shown while a reply streams in (#20).
+const PENDING_USER_ID = "pending-user";
+const PENDING_ASSISTANT_ID = "pending-assistant";
+
 export function ConversationPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -144,10 +148,31 @@ export function ConversationPage() {
 
     try {
       const sid = await ensureSession();
-      const res = await api.sendMessage(sid, text);
 
+      // Show optimistic bubbles immediately: the user's message and an empty
+      // assistant bubble that fills in as tokens stream (#20).
+      const now = new Date().toISOString();
       setMessages((prev) => [
         ...prev,
+        { id: PENDING_USER_ID, sessionId: sid, role: "user", content: text, createdAt: now },
+        { id: PENDING_ASSISTANT_ID, sessionId: sid, role: "assistant", content: "", createdAt: now },
+      ]);
+
+      const res = await api.sendMessageStream(sid, text, (delta) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === PENDING_ASSISTANT_ID
+              ? { ...m, content: m.content + delta }
+              : m,
+          ),
+        );
+      });
+
+      // Swap both temp bubbles for the persisted messages in one update.
+      setMessages((prev) => [
+        ...prev.filter(
+          (m) => m.id !== PENDING_USER_ID && m.id !== PENDING_ASSISTANT_ID,
+        ),
         res.userMessage,
         { ...res.assistantMessage, feedback: res.feedback, replyLines: res.assistantMessage.replyLines },
       ]);
@@ -181,6 +206,13 @@ export function ConversationPage() {
       // Auto-play assistant reply
       tts.play(res.assistantMessage.content);
     } catch (err) {
+      // Drop the optimistic bubbles and restore the text so the user can retry.
+      setMessages((prev) =>
+        prev.filter(
+          (m) => m.id !== PENDING_USER_ID && m.id !== PENDING_ASSISTANT_ID,
+        ),
+      );
+      setInput(text);
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
@@ -292,6 +324,12 @@ export function ConversationPage() {
   const awaitingCorrection = lastAssistantMsg?.feedback?.awaitingCorrection;
   const preparing = initializing && messages.length === 0;
 
+  // Typing dots stand in for the streaming assistant bubble only until its first
+  // token arrives; after that the bubble itself shows the growing reply (#20).
+  const streamingAssistant = messages.find((m) => m.id === PENDING_ASSISTANT_ID);
+  const showTypingDots =
+    loading && (!streamingAssistant || streamingAssistant.content.length === 0);
+
   return (
     <div className="flex flex-col h-full">
       <SessionHeader
@@ -321,12 +359,16 @@ export function ConversationPage() {
           </div>
         )}
 
-        {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} showFeedback={showFeedback} />
-        ))}
+        {messages.map((m) =>
+          // The empty streaming bubble is represented by the typing dots below
+          // until its first token arrives, so skip rendering an empty bubble.
+          m.id === PENDING_ASSISTANT_ID && m.content.length === 0 ? null : (
+            <MessageBubble key={m.id} message={m} showFeedback={showFeedback} />
+          ),
+        )}
 
         {/* Typing indicator */}
-        {loading && (
+        {showTypingDots && (
           <div className="flex items-end gap-2 animate-fade-in">
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
