@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
   getStatus,
-  statusBadgeVariant,
+  StatusBadge,
   StabilityBar,
 } from "@/components/vocab-shared";
 import { VocabReview } from "@/components/VocabReview";
@@ -243,9 +243,7 @@ export function VocabularyPage() {
                         {item.word}
                       </span>
                       <div className="flex flex-col items-end gap-1 shrink-0">
-                        <Badge variant={statusBadgeVariant(status)}>
-                          {status}
-                        </Badge>
+                        <StatusBadge status={status} />
                         {item.category && (
                           <Badge variant="outline">{item.category}</Badge>
                         )}

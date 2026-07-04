@@ -25,13 +25,13 @@ export function TopBar() {
               onClick={() => setTheme(value)}
               title={label}
               className={cn(
-                "p-1.5 rounded-md transition-colors",
+                "flex h-10 w-10 items-center justify-center rounded-md transition-colors",
                 theme === value
                   ? "bg-primary text-white"
                   : "text-text-muted hover:text-text",
               )}
             >
-              <Icon size={14} />
+              <Icon size={16} />
             </button>
           ))}
         </div>
@@ -39,9 +39,9 @@ export function TopBar() {
         <button
           onClick={signOut}
           title="Sign out"
-          className="p-1.5 rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
+          className="flex h-10 w-10 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
         >
-          <LogOut size={14} />
+          <LogOut size={16} />
         </button>
       </div>
     </header>

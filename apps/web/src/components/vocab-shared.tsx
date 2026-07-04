@@ -1,5 +1,7 @@
+import { CheckCircle2, Clock3, GraduationCap, Sparkles } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { VocabularyItem } from "../lib/api";
-import type { BadgeProps } from "@/components/ui/badge";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
 
 export type VocabStatus = "mastered" | "due" | "learning" | "new";
 
@@ -18,6 +20,27 @@ export function statusBadgeVariant(status: VocabStatus): BadgeProps["variant"] {
       : status === "learning"
         ? "default"
         : "secondary";
+}
+
+const STATUS_ICON: Record<VocabStatus, LucideIcon> = {
+  mastered: CheckCircle2,
+  due: Clock3,
+  learning: GraduationCap,
+  new: Sparkles,
+};
+
+/**
+ * Status badge that pairs the status text with an icon so the meaning is not
+ * communicated by color alone.
+ */
+export function StatusBadge({ status }: { status: VocabStatus }) {
+  const Icon = STATUS_ICON[status];
+  return (
+    <Badge variant={statusBadgeVariant(status)} className="gap-1">
+      <Icon size={12} className="shrink-0" />
+      {status}
+    </Badge>
+  );
 }
 
 export function StabilityBar({ stability }: { stability: number }) {
