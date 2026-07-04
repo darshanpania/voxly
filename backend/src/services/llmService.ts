@@ -4,6 +4,25 @@ import { getVocabDueForReview } from "./progressService.js";
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
+/**
+ * Thrown when the tutor response cannot be obtained or parsed after retries.
+ * The message is intentionally generic — callers must NOT surface underlying
+ * OpenAI/parse error internals to users or persist them as tutor content.
+ */
+export class TutorResponseError extends Error {
+  constructor(message = "Failed to generate a tutor response") {
+    super(message);
+    this.name = "TutorResponseError";
+  }
+}
+
+/** Strip a leading/trailing markdown code fence (```json … ```) if present. */
+function stripMarkdownFences(text: string): string {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
+  return fenced ? fenced[1].trim() : trimmed;
+}
+
 export interface ReplyLine {
   es: string;
   en: string;
@@ -168,13 +187,20 @@ export async function getTutorResponse(
         messages,
         response_format: { type: "json_object" },
         temperature: 0.7,
-        max_tokens: 1024,
+        max_tokens: 2048,
       });
 
       const raw = completion.choices[0]?.message?.content;
       if (!raw) throw new Error("Empty response from OpenAI");
 
-      const parsed: TutorResponse = JSON.parse(raw);
+      let parsed: TutorResponse;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        // The model occasionally wraps JSON in markdown fences despite the
+        // instructions — strip them and try once more before failing the attempt.
+        parsed = JSON.parse(stripMarkdownFences(raw));
+      }
 
       // Validate required fields
       if (!parsed.reply || !parsed.feedback) {
@@ -191,27 +217,16 @@ export async function getTutorResponse(
       parsed.reply_lines = parsed.reply_lines || [{ es: parsed.reply, en: parsed.reply_translation || parsed.reply }];
 
       return parsed;
-    } catch (err) {
+    } catch {
+      // Swallow the attempt-level error (which may contain OpenAI/parse
+      // internals) and retry. After the final attempt, throw a typed error so
+      // callers can fail cleanly instead of persisting a fabricated reply.
       if (attempt === 1) {
-        // Graceful fallback: return raw text with empty feedback
-        const fallbackReply =
-          err instanceof Error
-            ? `Lo siento, hubo un problema. (Error: ${err.message})`
-            : "Lo siento, hubo un problema técnico.";
-        return {
-          reply: fallbackReply,
-          reply_lines: [{ es: fallbackReply, en: "Sorry, there was a problem." }],
-          feedback: {
-            corrections: [],
-            vocab_notes: [],
-            difficulty_signal: "on_track",
-            awaiting_correction: false,
-          },
-        };
+        throw new TutorResponseError();
       }
     }
   }
 
-  // Unreachable, but TypeScript needs it
-  throw new Error("Unexpected error in getTutorResponse");
+  // Unreachable — the loop either returns or throws above.
+  throw new TutorResponseError();
 }

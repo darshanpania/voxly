@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { verifySupabaseJwt } from "../middleware/auth.js";
-import { getTutorResponse } from "../services/llmService.js";
+import { getTutorResponse, TutorResponseError } from "../services/llmService.js";
 import { saveFeedbackAndVocab } from "../services/feedbackParser.js";
 import { checkMessageAllowance } from "../services/usageService.js";
 import { sessionDurationMs } from "../services/progressService.js";
@@ -174,15 +174,30 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       content: m.content,
     }));
 
-    // Get tutor response
-    const tutorResponse = await getTutorResponse(
-      session.language,
-      session.difficulty,
-      session.mode,
-      history,
-      body.content,
-      userId,
-    );
+    // Get tutor response. If the LLM fails or returns unparseable output, we
+    // must NOT persist a fabricated reply (it would pollute conversation history
+    // and summaries). Roll back the just-created user message so the client can
+    // safely resend without duplicating it, then surface a clean error.
+    let tutorResponse;
+    try {
+      tutorResponse = await getTutorResponse(
+        session.language,
+        session.difficulty,
+        session.mode,
+        history,
+        body.content,
+        userId,
+      );
+    } catch (err) {
+      if (err instanceof TutorResponseError) {
+        await prisma.message.delete({ where: { id: userMessage.id } });
+        return reply.code(502).send({
+          error:
+            "Sofia couldn't respond just now. Please try sending your message again.",
+        });
+      }
+      throw err;
+    }
 
     // Save assistant message
     const assistantMessage = await prisma.message.create({
