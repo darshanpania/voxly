@@ -10,6 +10,7 @@ const MAX_RECORDING_SECONDS = 60;
 
 interface Props {
   onTranscript: (transcript: string) => void;
+  onError?: (message: string) => void;
   disabled?: boolean;
   language?: string;
 }
@@ -22,6 +23,7 @@ function formatElapsed(seconds: number): string {
 
 export function VoiceButton({
   onTranscript,
+  onError,
   disabled = false,
   language = "es",
 }: Props) {
@@ -83,6 +85,7 @@ export function VoiceButton({
           }
         } catch {
           // Transcription failure — user can retry
+          onError?.("Couldn't transcribe that. Please try again.");
         } finally {
           setState("idle");
         }
@@ -104,11 +107,18 @@ export function VoiceButton({
           return next;
         });
       }, 1000);
-    } catch {
-      // Mic permission denied or unavailable
+    } catch (err) {
+      // Mic permission denied or otherwise unavailable
       setState("idle");
+      const denied =
+        err instanceof DOMException && err.name === "NotAllowedError";
+      onError?.(
+        denied
+          ? "Microphone access was denied. Check your browser's mic permission for this site."
+          : "Microphone unavailable. Check your browser's mic permission for this site.",
+      );
     }
-  }, [disabled, state, language, onTranscript, clearTimer, stopRecording]);
+  }, [disabled, state, language, onTranscript, onError, clearTimer, stopRecording]);
 
   // Clean up timer and any active recording on unmount.
   useEffect(() => {

@@ -31,6 +31,7 @@ export function ConversationPage() {
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const initRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const tts = useTTS();
 
   const scrollToBottom = () => {
@@ -186,14 +187,20 @@ export function ConversationPage() {
     }
   };
 
-  const handleTranscript = useCallback(
-    (transcript: string) => {
-      setInput(transcript);
-      handleSend(transcript);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loading, sessionId, difficulty, mode],
-  );
+  // Whisper regularly mishears beginners, so don't auto-send. Drop the
+  // transcript into the input and focus it so the learner can review/edit
+  // before tapping Send (#12).
+  const handleTranscript = useCallback((transcript: string) => {
+    setInput(transcript);
+    setError(null);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      }
+    });
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -421,6 +428,7 @@ export function ConversationPage() {
         )}
 
         <textarea
+          ref={textareaRef}
           className={cn(
             "flex-1 bg-surface-2 border border-border rounded-xl px-4 py-2.5",
             "text-text placeholder:text-text-dim resize-none",
@@ -435,7 +443,11 @@ export function ConversationPage() {
           disabled={loading || sessionEnded}
         />
 
-        <VoiceButton onTranscript={handleTranscript} disabled={loading || sessionEnded} />
+        <VoiceButton
+          onTranscript={handleTranscript}
+          onError={setError}
+          disabled={loading || sessionEnded}
+        />
 
         <Button
           onClick={() => handleSend()}
