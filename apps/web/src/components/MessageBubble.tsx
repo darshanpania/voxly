@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { Message, ReplyLine } from "../lib/api";
 import { FeedbackCard } from "./FeedbackCard";
-import { cn } from "@/lib/utils";
 
 interface Props {
   message: Message;
