@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Clock, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { SessionSummaryCard } from "../components/SessionSummaryCard";
 import { MessageBubble } from "../components/MessageBubble";
+import { ErrorState } from "../components/ErrorState";
+import { useApiData } from "../hooks/useApiData";
 import type { Session } from "../lib/api";
 import * as api from "../lib/api";
 
@@ -27,16 +28,8 @@ function formatDuration(session: Session): string {
 }
 
 function SessionList() {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api
-      .getSessions()
-      .then(setSessions)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const { data, loading, error, retry } = useApiData(() => api.getSessions(), []);
+  const sessions = data ?? [];
 
   if (loading) {
     return (
@@ -44,6 +37,10 @@ function SessionList() {
         <Loader2 className="w-6 h-6 text-primary animate-spin" />
       </div>
     );
+  }
+
+  if (error) {
+    return <ErrorState error={error} retry={retry} />;
   }
 
   if (sessions.length === 0) {
@@ -97,17 +94,12 @@ function SessionList() {
 
 function SessionDetail() {
   const { id } = useParams<{ id: string }>();
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!id) return;
-    api
-      .getSession(id)
-      .then(setSession)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [id]);
+  const {
+    data: session,
+    loading,
+    error,
+    retry,
+  } = useApiData(() => api.getSession(id as string), [id]);
 
   if (loading) {
     return (
@@ -115,6 +107,10 @@ function SessionDetail() {
         <Loader2 className="w-6 h-6 text-primary animate-spin" />
       </div>
     );
+  }
+
+  if (error) {
+    return <ErrorState error={error} retry={retry} />;
   }
 
   if (!session) {

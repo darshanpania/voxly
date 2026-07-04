@@ -10,6 +10,8 @@ import {
   StabilityBar,
 } from "@/components/vocab-shared";
 import { VocabReview } from "@/components/VocabReview";
+import { ErrorState } from "@/components/ErrorState";
+import { useApiData } from "../hooks/useApiData";
 import type { VocabularyItem } from "../lib/api";
 import * as api from "../lib/api";
 
@@ -17,17 +19,19 @@ export function VocabularyPage() {
   const [dueVocab, setDueVocab] = useState<VocabularyItem[]>([]);
   const [allVocab, setAllVocab] = useState<VocabularyItem[]>([]);
   const [tab, setTab] = useState<"due" | "all">("due");
-  const [loading, setLoading] = useState(true);
 
+  const { data, loading, error, retry } = useApiData(
+    () => Promise.all([api.getVocabulary("es"), api.getAllVocabulary("es")]),
+    [],
+  );
+
+  // Seed the local queues the review flow mutates whenever a fetch resolves.
   useEffect(() => {
-    Promise.all([api.getVocabulary("es"), api.getAllVocabulary("es")])
-      .then(([due, all]) => {
-        setDueVocab(due);
-        setAllVocab(all);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+    if (data) {
+      setDueVocab(data[0]);
+      setAllVocab(data[1]);
+    }
+  }, [data]);
 
   // Reviews an item and reconciles both datasets. Rejects on failure so the
   // review flow can surface an inline error and let the user retry.
@@ -100,6 +104,8 @@ export function VocabularyPage() {
         <div className="flex-1 flex items-center justify-center">
           <p className="text-text-muted text-sm">Loading vocabulary...</p>
         </div>
+      ) : error ? (
+        <ErrorState error={error} retry={retry} />
       ) : tab === "due" ? (
         <VocabReview
           queue={dueVocab}
