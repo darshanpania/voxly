@@ -292,10 +292,16 @@ export async function getProgressStats(
     }
   }
 
-  const level_history = sessions.map((s) => ({
-    date: s.createdAt.toISOString(),
-    level: s.difficulty,
-  }));
+  // Collapse consecutive same-level sessions: keep the first session and only
+  // subsequent sessions where the level changed from the previous one.
+  const level_history: Array<{ date: string; level: string }> = [];
+  let prevLevel: string | null = null;
+  for (const s of sessions) {
+    if (s.difficulty !== prevLevel) {
+      level_history.push({ date: s.createdAt.toISOString(), level: s.difficulty });
+      prevLevel = s.difficulty;
+    }
+  }
 
   // Vocab growth: cumulative count by day
   const vocabItems = await prisma.vocabularyItem.findMany({

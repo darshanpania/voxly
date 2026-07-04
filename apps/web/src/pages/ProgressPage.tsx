@@ -226,9 +226,16 @@ export function ProgressPage() {
                     key={i}
                     className="flex items-center justify-between py-1.5 border-b border-border last:border-0"
                   >
-                    <span className="text-sm text-text-muted">
-                      {new Date(entry.date).toLocaleDateString()}
-                    </span>
+                    <div className="flex flex-col">
+                      <span className="text-sm text-text">
+                        {i === 0
+                          ? `Started at ${entry.level}`
+                          : `Moved to ${entry.level}`}
+                      </span>
+                      <span className="text-xs text-text-muted">
+                        {new Date(entry.date).toLocaleDateString()}
+                      </span>
+                    </div>
                     <Badge variant="default">{entry.level}</Badge>
                   </li>
                 ))}
