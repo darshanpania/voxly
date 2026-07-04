@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { verifySupabaseJwt } from "../middleware/auth.js";
 import { getTutorResponse } from "../services/llmService.js";
 import { saveFeedbackAndVocab } from "../services/feedbackParser.js";
+import { checkMessageAllowance } from "../services/usageService.js";
 
 const createSessionSchema = z.object({
   language: z.string().default("es"),
@@ -131,6 +132,15 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
 
     if (!session || session.userId !== userId) {
       return reply.code(404).send({ error: "Session not found" });
+    }
+
+    // Enforce daily free message limit before spending on the LLM
+    const allowance = await checkMessageAllowance(userId);
+    if (!allowance.allowed) {
+      return reply.code(429).send({
+        error:
+          "Daily free message limit reached (50/day). Upgrade to premium for unlimited practice.",
+      });
     }
 
     // Save user message
