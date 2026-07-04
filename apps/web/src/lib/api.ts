@@ -90,7 +90,7 @@ export function createSession(data: {
   language: string;
   difficulty: string;
   mode: string;
-}): Promise<Session> {
+}): Promise<Session & { messages?: Message[] }> {
   return request("/sessions", {
     method: "POST",
     body: JSON.stringify(data),
@@ -253,4 +253,27 @@ export async function synthesizeSpeech(
     throw new Error(body.error || `Synthesize failed: ${res.status}`);
   }
   return res.blob();
+}
+
+// --- Language profile (persisted CEFR level) ---
+
+export interface LanguageProfile {
+  id?: string;
+  userId?: string;
+  language: string;
+  currentLevel: string;
+}
+
+export function getProfile(language = "es"): Promise<LanguageProfile> {
+  return request(`/profile?language=${language}`);
+}
+
+export function updateProfileLevel(
+  language: string,
+  currentLevel: string,
+): Promise<LanguageProfile> {
+  return request("/profile", {
+    method: "PATCH",
+    body: JSON.stringify({ language, currentLevel }),
+  });
 }

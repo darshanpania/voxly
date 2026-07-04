@@ -17,6 +17,18 @@ const sendMessageSchema = z.object({
   content: z.string().min(1),
 });
 
+// Canned, level-calibrated opening greetings from Sofía (#16).
+// No LLM call — instant and free. Each pairs a natural Spanish greeting with a
+// level-appropriate opening question to invite the learner to respond.
+const GREETINGS: Record<string, string> = {
+  A1: "¡Hola! Soy Sofía. ¿Cómo estás hoy?",
+  A2: "¡Hola! Me llamo Sofía. ¿Qué has hecho hoy?",
+  B1: "¡Hola! Soy Sofía, tu tutora de español. Cuéntame, ¿qué te gusta hacer en tu tiempo libre?",
+  B2: "¡Hola! Soy Sofía. Me encantaría conocerte mejor. ¿Cómo ha ido tu día hasta ahora?",
+  C1: "¡Hola! Soy Sofía. Para ir entrando en calor, ¿hay algún tema que te apetezca comentar hoy?",
+  C2: "¡Hola! Soy Sofía. Antes de nada, cuéntame: ¿qué te ha llamado la atención últimamente, ya sea una noticia, una lectura o una conversación?",
+};
+
 export async function sessionRoutes(app: FastifyInstance): Promise<void> {
   // All routes require auth
   app.addHook("onRequest", verifySupabaseJwt);
@@ -34,10 +46,11 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       create: { id: userId, email },
     });
 
-    // Upsert UserLanguageProfile
+    // Ensure a UserLanguageProfile exists, but do NOT overwrite the stored
+    // level on session creation (#8) — level is written only via PATCH /profile.
     await prisma.userLanguageProfile.upsert({
       where: { userId_language: { userId, language: body.language } },
-      update: { currentLevel: body.difficulty },
+      update: {},
       create: {
         userId,
         language: body.language,
@@ -54,7 +67,17 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    reply.code(201).send(session);
+    // Sofía greets first (#16) with a canned, level-appropriate opener so the
+    // learner never faces an empty screen. No LLM call — instant and free.
+    const greetingMessage = await prisma.message.create({
+      data: {
+        sessionId: session.id,
+        role: "assistant",
+        content: GREETINGS[body.difficulty] ?? GREETINGS.A1,
+      },
+    });
+
+    reply.code(201).send({ ...session, messages: [greetingMessage] });
   });
 
   // GET /sessions
