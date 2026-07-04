@@ -6,35 +6,58 @@ import { MessageAudioButton } from "./MessageAudioButton";
 interface Props {
   message: Message;
   showFeedback: boolean;
+  immersion?: boolean;
 }
 
-function TranslatableLine({ line }: { line: ReplyLine }) {
-  // `pinned` is toggled by click/tap and stays until clicked again.
-  // `hover` is a desktop-only enhancement that shows on mouse-over.
-  const [pinned, setPinned] = useState(false);
+function TranslatableLine({
+  line,
+  immersion,
+}: {
+  line: ReplyLine;
+  immersion: boolean;
+}) {
+  // Helper mode: a tap pins the translation; hover previews it on desktop.
+  // Immersion mode: translations stay available but need a deliberate
+  // two-step reveal — the first tap shows an "EN?" chip, a second tap shows
+  // the translation — and hover never bypasses it.
+  const [stage, setStage] = useState<0 | 1 | 2>(0);
   const [hover, setHover] = useState(false);
-  const showTranslation = pinned || hover;
 
-  const toggle = () => setPinned((p) => !p);
+  const advance = () => {
+    setStage((s) => {
+      if (!immersion) return s === 2 ? 0 : 2;
+      return s === 0 ? 1 : s === 1 ? 2 : 0;
+    });
+  };
+
+  const showTranslation = stage === 2 || (!immersion && hover);
+  const showChip = immersion && stage === 1;
 
   return (
     <span
       className="translatable-line select-none cursor-pointer"
       role="button"
       tabIndex={0}
-      aria-pressed={pinned}
-      aria-label={`Show English translation: ${line.en}`}
-      onClick={toggle}
+      aria-pressed={stage === 2}
+      aria-label={
+        immersion && stage === 0
+          ? "Tap twice to reveal the English translation"
+          : `Show English translation: ${line.en}`
+      }
+      onClick={advance}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          toggle();
+          advance();
         }
       }}
     >
       {line.es}
+      {showChip && (
+        <span className="translation-tooltip translation-chip">EN?</span>
+      )}
       {showTranslation && (
         <span className="translation-tooltip">{line.en}</span>
       )}
@@ -42,7 +65,7 @@ function TranslatableLine({ line }: { line: ReplyLine }) {
   );
 }
 
-export function MessageBubble({ message, showFeedback }: Props) {
+export function MessageBubble({ message, showFeedback, immersion = false }: Props) {
   const isUser = message.role === "user";
   const time = new Date(message.createdAt).toLocaleTimeString([], {
     hour: "2-digit",
@@ -59,7 +82,7 @@ export function MessageBubble({ message, showFeedback }: Props) {
         {message.replyLines.map((line, i) => (
           <span key={i}>
             {i > 0 && " "}
-            <TranslatableLine line={line} />
+            <TranslatableLine line={line} immersion={immersion} />
           </span>
         ))}
       </span>

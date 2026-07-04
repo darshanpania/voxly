@@ -363,7 +363,12 @@ export function ConversationPage() {
           // The empty streaming bubble is represented by the typing dots below
           // until its first token arrives, so skip rendering an empty bubble.
           m.id === PENDING_ASSISTANT_ID && m.content.length === 0 ? null : (
-            <MessageBubble key={m.id} message={m} showFeedback={showFeedback} />
+            <MessageBubble
+              key={m.id}
+              message={m}
+              showFeedback={showFeedback}
+              immersion={mode === "immersion"}
+            />
           ),
         )}
 

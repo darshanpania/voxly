@@ -144,7 +144,12 @@ function SessionDetail() {
 
         <div className="flex flex-col gap-2">
           {session.messages?.map((m) => (
-            <MessageBubble key={m.id} message={m} showFeedback={true} />
+            <MessageBubble
+              key={m.id}
+              message={m}
+              showFeedback={true}
+              immersion={session.mode === "immersion"}
+            />
           ))}
         </div>
       </div>
