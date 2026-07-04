@@ -290,11 +290,12 @@ export async function getProgressStats(
 export async function reviewVocabFSRS(
   itemId: string,
   rating: Rating,
+  userId: string,
 ) {
-  const item = await prisma.vocabularyItem.findUnique({
-    where: { id: itemId },
+  const item = await prisma.vocabularyItem.findFirst({
+    where: { id: itemId, userId },
   });
-  if (!item) throw new Error("Vocabulary item not found");
+  if (!item) return null;
 
   const card: FSRSCard = {
     stability: item.stability,
@@ -337,6 +338,7 @@ export async function reviewVocabFSRS(
 export async function updateVocabAfterReview(
   itemId: string,
   wasCorrect: boolean,
+  userId: string,
 ) {
-  return reviewVocabFSRS(itemId, booleanToRating(wasCorrect));
+  return reviewVocabFSRS(itemId, booleanToRating(wasCorrect), userId);
 }

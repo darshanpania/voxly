@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { prisma } from "../db.js";
 import { verifySupabaseJwt } from "../middleware/auth.js";
 import {
   getSessionSummary,
@@ -23,8 +24,15 @@ export async function progressRoutes(app: FastifyInstance): Promise<void> {
   // GET /sessions/:id/summary
   app.get<{ Params: { id: string } }>(
     "/sessions/:id/summary",
-    async (request) => {
+    async (request, reply) => {
+      const userId = request.user.sub;
       const { id } = request.params;
+
+      const session = await prisma.session.findUnique({ where: { id } });
+      if (!session || session.userId !== userId) {
+        return reply.code(404).send({ error: "Session not found" });
+      }
+
       return getSessionSummary(id);
     },
   );
@@ -73,15 +81,24 @@ export async function progressRoutes(app: FastifyInstance): Promise<void> {
   // PUT /vocabulary/:id/review — accepts FSRS rating (1-4) or legacy wasCorrect
   app.put<{ Params: { id: string } }>(
     "/vocabulary/:id/review",
-    async (request) => {
+    async (request, reply) => {
+      const userId = request.user.sub;
       const { id } = request.params;
       const body = reviewSchema.parse(request.body);
 
       if (body.rating !== undefined) {
-        return reviewVocabFSRS(id, body.rating as Rating);
+        const result = await reviewVocabFSRS(id, body.rating as Rating, userId);
+        if (!result) {
+          return reply.code(404).send({ error: "Vocabulary item not found" });
+        }
+        return result;
       }
       if (body.wasCorrect !== undefined) {
-        return updateVocabAfterReview(id, body.wasCorrect);
+        const result = await updateVocabAfterReview(id, body.wasCorrect, userId);
+        if (!result) {
+          return reply.code(404).send({ error: "Vocabulary item not found" });
+        }
+        return result;
       }
       throw new Error("Either rating or wasCorrect must be provided");
     },
