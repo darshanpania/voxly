@@ -2,46 +2,25 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import {
+  getStatus,
+  statusBadgeVariant,
+  StabilityBar,
+} from "@/components/vocab-shared";
+import { VocabReview } from "@/components/VocabReview";
 import type { VocabularyItem } from "../lib/api";
 import * as api from "../lib/api";
-
-function getStatus(item: VocabularyItem): "mastered" | "due" | "learning" | "new" {
-  if (item.state === 2 && item.stability > 21) return "mastered";
-  if (new Date(item.nextReviewAt) <= new Date()) return "due";
-  if (item.state === 1 || item.state === 3) return "learning";
-  return "new";
-}
-
-function StabilityBar({ stability }: { stability: number }) {
-  const pct = Math.min(100, Math.round((stability / 30) * 100));
-  return (
-    <div className="flex items-center gap-1.5">
-      <div className="h-1 w-16 rounded-full bg-surface-3 overflow-hidden">
-        <div
-          className="h-full rounded-full bg-primary transition-all"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="text-xs text-text-dim">{stability.toFixed(1)}d</span>
-    </div>
-  );
-}
 
 export function VocabularyPage() {
   const [dueVocab, setDueVocab] = useState<VocabularyItem[]>([]);
   const [allVocab, setAllVocab] = useState<VocabularyItem[]>([]);
   const [tab, setTab] = useState<"due" | "all">("due");
   const [loading, setLoading] = useState(true);
-  const [reviewing, setReviewing] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      api.getVocabulary("es"),
-      api.getAllVocabulary("es"),
-    ])
+    Promise.all([api.getVocabulary("es"), api.getAllVocabulary("es")])
       .then(([due, all]) => {
         setDueVocab(due);
         setAllVocab(all);
@@ -50,22 +29,22 @@ export function VocabularyPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Reviews an item and reconciles both datasets. Rejects on failure so the
+  // review flow can surface an inline error and let the user retry.
   const handleReview = async (itemId: string, rating: number) => {
-    setReviewing(itemId);
-    try {
-      const updated = await api.reviewVocab(itemId, rating);
-      const update = (prev: VocabularyItem[]) =>
-        prev.map((v) => (v.id === itemId ? updated : v));
-      setDueVocab(update);
-      setAllVocab(update);
-    } catch {
-      // Review failure — non-critical
-    } finally {
-      setReviewing(null);
-    }
+    const updated = await api.reviewVocab(itemId, rating);
+    // Remove from the due queue immediately (client-side removal is fine).
+    setDueVocab((prev) => prev.filter((v) => v.id !== itemId));
+    // Keep the "All Words" copy fresh so stability/state badges reflect the review.
+    setAllVocab((prev) => prev.map((v) => (v.id === itemId ? updated : v)));
   };
 
-  const vocab = tab === "due" ? dueVocab : allVocab;
+  const handleRestart = () => {
+    api
+      .getVocabulary("es")
+      .then(setDueVocab)
+      .catch(() => {});
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -92,7 +71,7 @@ export function VocabularyPage() {
             "px-4 py-1.5 rounded-[var(--radius-md)] text-sm font-medium transition-colors",
             tab === "due"
               ? "bg-primary text-white"
-              : "bg-surface-2 text-text-muted hover:text-text hover:bg-surface-3"
+              : "bg-surface-2 text-text-muted hover:text-text hover:bg-surface-3",
           )}
         >
           Due for Review
@@ -106,7 +85,7 @@ export function VocabularyPage() {
             "px-4 py-1.5 rounded-[var(--radius-md)] text-sm font-medium transition-colors",
             tab === "all"
               ? "bg-primary text-white"
-              : "bg-surface-2 text-text-muted hover:text-text hover:bg-surface-3"
+              : "bg-surface-2 text-text-muted hover:text-text hover:bg-surface-3",
           )}
         >
           All Words
@@ -121,7 +100,14 @@ export function VocabularyPage() {
         <div className="flex-1 flex items-center justify-center">
           <p className="text-text-muted text-sm">Loading vocabulary...</p>
         </div>
-      ) : vocab.length === 0 ? (
+      ) : tab === "due" ? (
+        <VocabReview
+          queue={dueVocab}
+          onReview={handleReview}
+          onRestart={handleRestart}
+          onBrowseAll={() => setTab("all")}
+        />
+      ) : allVocab.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
           <BookOpen className="w-12 h-12 text-text-dim opacity-40" />
           <p className="text-text-muted text-sm">No vocabulary items</p>
@@ -134,9 +120,8 @@ export function VocabularyPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4 overflow-y-auto flex-1">
-          {vocab.map((item) => {
+          {allVocab.map((item) => {
             const status = getStatus(item);
-            const isReviewing = reviewing === item.id;
             return (
               <Card key={item.id} className="flex flex-col gap-3 p-4">
                 {/* Word + status badge */}
@@ -145,19 +130,7 @@ export function VocabularyPage() {
                     {item.word}
                   </span>
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    <Badge
-                      variant={
-                        status === "mastered"
-                          ? "success"
-                          : status === "due"
-                          ? "warning"
-                          : status === "learning"
-                          ? "default"
-                          : "secondary"
-                      }
-                    >
-                      {status}
-                    </Badge>
+                    <Badge variant={statusBadgeVariant(status)}>{status}</Badge>
                     {item.category && (
                       <Badge variant="outline">{item.category}</Badge>
                     )}
@@ -182,46 +155,6 @@ export function VocabularyPage() {
                     Seen {item.timesSeen}x · Correct {item.timesCorrect}x
                   </span>
                   <StabilityBar stability={item.stability ?? 0} />
-                </div>
-
-                {/* FSRS Rating buttons */}
-                <div className="grid grid-cols-4 gap-1.5 pt-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isReviewing}
-                    onClick={() => handleReview(item.id, 1)}
-                    className="text-danger border-danger/30 hover:bg-danger/10 hover:border-danger/50 text-xs"
-                  >
-                    Again
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isReviewing}
-                    onClick={() => handleReview(item.id, 2)}
-                    className="text-warning border-warning/30 hover:bg-warning/10 hover:border-warning/50 text-xs"
-                  >
-                    Hard
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isReviewing}
-                    onClick={() => handleReview(item.id, 3)}
-                    className="text-success border-success/30 hover:bg-success/10 hover:border-success/50 text-xs"
-                  >
-                    Good
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isReviewing}
-                    onClick={() => handleReview(item.id, 4)}
-                    className="text-primary border-primary/30 hover:bg-primary/10 hover:border-primary/50 text-xs"
-                  >
-                    Easy
-                  </Button>
                 </div>
               </Card>
             );
