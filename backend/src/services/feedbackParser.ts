@@ -1,5 +1,6 @@
 import { prisma } from "../db.js";
 import type { TutorResponse } from "./llmService.js";
+import { normalizeWord } from "./wordNormalizer.js";
 
 export async function saveFeedbackAndVocab(
   messageId: string,
@@ -21,12 +22,17 @@ export async function saveFeedbackAndVocab(
 
   // Upsert vocabulary items
   for (const vocab of vocab_notes) {
+    // Normalize the word so casing, articles, and punctuation don't create
+    // duplicate cards keyed on (userId, language, word).
+    const word = normalizeWord(vocab.word ?? "", language);
+    if (!word) continue;
+
     await prisma.vocabularyItem.upsert({
       where: {
         userId_language_word: {
           userId,
           language,
-          word: vocab.word,
+          word,
         },
       },
       update: {
@@ -38,7 +44,7 @@ export async function saveFeedbackAndVocab(
       create: {
         userId,
         language,
-        word: vocab.word,
+        word,
         definition: vocab.definition,
         exampleSentence: vocab.example,
         category: vocab.category || "general",

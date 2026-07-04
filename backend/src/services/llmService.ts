@@ -110,7 +110,7 @@ You MUST respond with valid JSON matching this exact schema (no markdown fences,
     ],
     "vocab_notes": [
       {
-        "word": "a Spanish word used in your reply or the user's message",
+        "word": "a Spanish word in dictionary/lemma form: lowercase, no leading articles, no punctuation (e.g. \"comer\", not \"El Comer.\")",
         "definition": "English definition",
         "example": "example sentence using the word",
         "category": "one of: greetings, food, travel, numbers, family, work, nature, emotions, shopping, health, general"
