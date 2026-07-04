@@ -4,13 +4,21 @@ import { env } from "../env.js";
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
+// Voice per language; falls back to "nova" for anything unmapped.
+const VOICES: Record<string, string> = {
+  es: "nova",
+  default: "nova",
+};
+
 export async function synthesizeSpeech(
   text: string,
-  _language: string,
+  language: string,
 ): Promise<Readable> {
+  const voice = VOICES[language] ?? VOICES.default;
+
   const response = await openai.audio.speech.create({
     model: "tts-1",
-    voice: "nova",
+    voice,
     input: text,
     response_format: "mp3",
   });

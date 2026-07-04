@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Message, ReplyLine } from "../lib/api";
 import { FeedbackCard } from "./FeedbackCard";
+import { MessageAudioButton } from "./MessageAudioButton";
 
 interface Props {
   message: Message;
@@ -73,8 +74,11 @@ export function MessageBubble({ message, showFeedback }: Props) {
           {renderContent()}
         </div>
 
-        {/* Timestamp */}
-        <span className="text-xs text-text-dim mt-1 px-1">{time}</span>
+        {/* Meta row: timestamp + audio replay (assistant only) */}
+        <div className="flex items-center gap-2 mt-1 px-1">
+          <span className="text-xs text-text-dim">{time}</span>
+          {!isUser && <MessageAudioButton text={message.content} />}
+        </div>
 
         {/* Feedback card */}
         {showFeedback && !isUser && message.feedback && (
