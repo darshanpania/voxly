@@ -262,6 +262,82 @@ export async function getTutorResponse(
 /** Delimiter separating the streamed plain-text reply from the trailing JSON. */
 const FEEDBACK_DELIMITER = "===FEEDBACK===";
 
+/**
+ * Reliable recovery path for the streaming tutor. gpt-4o frequently ends its
+ * turn right after the plain-text reply and never emits the `===FEEDBACK===`
+ * JSON tail. Without this, `reply_lines` degrades to `{ es: reply, en: reply }`
+ * (hover shows Spanish instead of English) and all feedback/vocab is lost.
+ *
+ * Given the already-produced reply, this makes a single non-streaming
+ * `json_object` call to reconstruct per-sentence English translations and the
+ * feedback block — the same structured data the inline tail would have carried.
+ */
+async function annotateStreamedReply(
+  language: string,
+  difficulty: string,
+  mode: string,
+  history: ConversationMessage[],
+  userMessage: string,
+  reply: string,
+): Promise<{ reply_lines: ReplyLine[]; feedback: TutorResponse["feedback"] }> {
+  const langName = language === "es" ? "Spanish" : language;
+  const system = `You are an annotation service for a ${langName} language tutor named Sofía (difficulty level ${difficulty}, ${mode} mode). Given the student's latest message and Sofía's reply, respond with ONLY valid JSON (no markdown fences, no extra text) matching this exact schema:
+{
+  "reply_lines": [
+    { "es": "Each sentence of Sofía's reply, copied verbatim", "en": "Its accurate, natural English translation" }
+  ],
+  "feedback": {
+    "corrections": [
+      { "original": "what the student wrote incorrectly", "corrected": "the correct form", "explanation": "brief explanation in English" }
+    ],
+    "vocab_notes": [
+      { "word": "a ${langName} word in lemma form: lowercase, no leading articles, no punctuation", "definition": "English definition", "example": "example sentence using the word", "category": "one of: greetings, food, travel, numbers, family, work, nature, emotions, shopping, health, general" }
+    ],
+    "difficulty_signal": "too_easy" | "on_track" | "too_hard",
+    "awaiting_correction": false
+  }
+}
+
+Rules:
+- "reply_lines" MUST cover every sentence of Sofía's reply, in order. Put the ${langName} sentence in "es" and a real English translation in "en" — never copy the ${langName} text into "en".
+- Derive "corrections", "vocab_notes" (1-3 useful words), and "difficulty_signal" from the student's message and the conversation. Empty corrections array if there are none.`;
+
+  const user = `Student's message: ${userMessage}\n\nSofía's reply:\n${reply}`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    response_format: { type: "json_object" },
+    temperature: 0.3,
+    max_tokens: 1024,
+  });
+
+  const raw = completion.choices[0]?.message?.content;
+  if (!raw) throw new Error("Empty annotation response");
+  const parsed = JSON.parse(raw);
+
+  const parsedFeedback = parsed?.feedback ?? {};
+  const feedback: TutorResponse["feedback"] = {
+    corrections: Array.isArray(parsedFeedback.corrections)
+      ? parsedFeedback.corrections
+      : [],
+    vocab_notes: Array.isArray(parsedFeedback.vocab_notes)
+      ? parsedFeedback.vocab_notes
+      : [],
+    difficulty_signal: parsedFeedback.difficulty_signal || "on_track",
+    awaiting_correction: parsedFeedback.awaiting_correction || false,
+  };
+  const reply_lines: ReplyLine[] =
+    Array.isArray(parsed?.reply_lines) && parsed.reply_lines.length > 0
+      ? parsed.reply_lines
+      : [];
+
+  return { reply_lines, feedback };
+}
+
 export type StreamTutorEvent =
   | { type: "delta"; text: string }
   | { type: "final"; tutorResponse: TutorResponse };
@@ -382,7 +458,8 @@ export async function* streamTutorResponse(
     difficulty_signal: "on_track",
     awaiting_correction: false,
   };
-  let replyLines: ReplyLine[] = reply ? [{ es: reply, en: reply }] : [];
+  let replyLines: ReplyLine[] = [];
+  let parsedTail = false;
 
   const cleaned = stripMarkdownFences(jsonBuffer);
   if (cleaned) {
@@ -405,10 +482,36 @@ export async function* streamTutorResponse(
           parsed.reply_lines.length > 0
         ) {
           replyLines = parsed.reply_lines;
+          parsedTail = true;
         }
       }
     } catch {
-      // Keep the graceful-degradation defaults above.
+      // Keep the graceful-degradation defaults above; recovered below.
+    }
+  }
+
+  // The model dropped the ===FEEDBACK=== JSON tail (common with gpt-4o, which
+  // often ends its turn after the reply). Recover per-sentence translations and
+  // feedback with one reliable structured call so hover-to-translate shows real
+  // English and corrections/vocab aren't silently lost.
+  if (!parsedTail && reply) {
+    try {
+      const annotated = await annotateStreamedReply(
+        language,
+        difficulty,
+        mode,
+        history,
+        userMessage,
+        reply,
+      );
+      if (annotated.reply_lines.length > 0) {
+        replyLines = annotated.reply_lines;
+        feedback = annotated.feedback;
+        parsedTail = true;
+      }
+    } catch {
+      // Annotation failed too — fall back to untranslated lines below so the
+      // turn still succeeds (the reply is already on the student's screen).
     }
   }
 
