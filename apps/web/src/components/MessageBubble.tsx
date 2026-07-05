@@ -1,23 +1,63 @@
 import { useState } from "react";
 import type { Message, ReplyLine } from "../lib/api";
 import { FeedbackCard } from "./FeedbackCard";
-import { cn } from "@/lib/utils";
+import { MessageAudioButton } from "./MessageAudioButton";
 
 interface Props {
   message: Message;
   showFeedback: boolean;
+  immersion?: boolean;
 }
 
-function TranslatableLine({ line }: { line: ReplyLine }) {
-  const [showTranslation, setShowTranslation] = useState(false);
+function TranslatableLine({
+  line,
+  immersion,
+}: {
+  line: ReplyLine;
+  immersion: boolean;
+}) {
+  // Helper mode: a tap pins the translation; hover previews it on desktop.
+  // Immersion mode: translations stay available but need a deliberate
+  // two-step reveal — the first tap shows an "EN?" chip, a second tap shows
+  // the translation — and hover never bypasses it.
+  const [stage, setStage] = useState<0 | 1 | 2>(0);
+  const [hover, setHover] = useState(false);
+
+  const advance = () => {
+    setStage((s) => {
+      if (!immersion) return s === 2 ? 0 : 2;
+      return s === 0 ? 1 : s === 1 ? 2 : 0;
+    });
+  };
+
+  const showTranslation = stage === 2 || (!immersion && hover);
+  const showChip = immersion && stage === 1;
 
   return (
     <span
-      className="translatable-line"
-      onMouseEnter={() => setShowTranslation(true)}
-      onMouseLeave={() => setShowTranslation(false)}
+      className="translatable-line select-none cursor-pointer"
+      role="button"
+      tabIndex={0}
+      aria-pressed={stage === 2}
+      aria-label={
+        immersion && stage === 0
+          ? "Tap twice to reveal the English translation"
+          : `Show English translation: ${line.en}`
+      }
+      onClick={advance}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          advance();
+        }
+      }}
     >
       {line.es}
+      {showChip && (
+        <span className="translation-tooltip translation-chip">EN?</span>
+      )}
       {showTranslation && (
         <span className="translation-tooltip">{line.en}</span>
       )}
@@ -25,7 +65,7 @@ function TranslatableLine({ line }: { line: ReplyLine }) {
   );
 }
 
-export function MessageBubble({ message, showFeedback }: Props) {
+export function MessageBubble({ message, showFeedback, immersion = false }: Props) {
   const isUser = message.role === "user";
   const time = new Date(message.createdAt).toLocaleTimeString([], {
     hour: "2-digit",
@@ -42,7 +82,7 @@ export function MessageBubble({ message, showFeedback }: Props) {
         {message.replyLines.map((line, i) => (
           <span key={i}>
             {i > 0 && " "}
-            <TranslatableLine line={line} />
+            <TranslatableLine line={line} immersion={immersion} />
           </span>
         ))}
       </span>
@@ -57,8 +97,11 @@ export function MessageBubble({ message, showFeedback }: Props) {
           {renderContent()}
         </div>
 
-        {/* Timestamp */}
-        <span className="text-xs text-text-dim mt-1 px-1">{time}</span>
+        {/* Meta row: timestamp + audio replay (assistant only) */}
+        <div className="flex items-center gap-2 mt-1 px-1">
+          <span className="text-xs text-text-dim">{time}</span>
+          {!isUser && <MessageAudioButton text={message.content} />}
+        </div>
 
         {/* Feedback card */}
         {showFeedback && !isUser && message.feedback && (

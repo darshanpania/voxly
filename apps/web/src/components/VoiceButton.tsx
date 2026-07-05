@@ -1,24 +1,51 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Mic, MicOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import * as api from "../lib/api";
 
 type VoiceState = "idle" | "recording" | "processing";
 
+// Auto-stop after this many seconds as a safety cap.
+const MAX_RECORDING_SECONDS = 60;
+
 interface Props {
   onTranscript: (transcript: string) => void;
+  onError?: (message: string) => void;
   disabled?: boolean;
   language?: string;
 }
 
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 export function VoiceButton({
   onTranscript,
+  onError,
   disabled = false,
   language = "es",
 }: Props) {
   const [state, setState] = useState<VoiceState>("idle");
+  const [elapsed, setElapsed] = useState(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    clearTimer();
+    if (recorderRef.current && recorderRef.current.state === "recording") {
+      recorderRef.current.stop();
+    }
+  }, [clearTimer]);
 
   const startRecording = useCallback(async () => {
     if (disabled || state !== "idle") return;
@@ -37,6 +64,7 @@ export function VoiceButton({
       };
 
       recorder.onstop = async () => {
+        clearTimer();
         // Stop all tracks to release the mic
         stream.getTracks().forEach((t) => t.stop());
 
@@ -57,6 +85,7 @@ export function VoiceButton({
           }
         } catch {
           // Transcription failure — user can retry
+          onError?.("Couldn't transcribe that. Please try again.");
         } finally {
           setState("idle");
         }
@@ -65,17 +94,42 @@ export function VoiceButton({
       recorderRef.current = recorder;
       recorder.start();
       setState("recording");
-    } catch {
-      // Mic permission denied or unavailable
-      setState("idle");
-    }
-  }, [disabled, state, language, onTranscript]);
+      setElapsed(0);
 
-  const stopRecording = useCallback(() => {
-    if (recorderRef.current && recorderRef.current.state === "recording") {
-      recorderRef.current.stop();
+      // Tick every second; auto-stop at the safety cap.
+      clearTimer();
+      timerRef.current = setInterval(() => {
+        setElapsed((prev) => {
+          const next = prev + 1;
+          if (next >= MAX_RECORDING_SECONDS) {
+            stopRecording();
+          }
+          return next;
+        });
+      }, 1000);
+    } catch (err) {
+      // Mic permission denied or otherwise unavailable
+      setState("idle");
+      const denied =
+        err instanceof DOMException && err.name === "NotAllowedError";
+      onError?.(
+        denied
+          ? "Microphone access was denied. Check your browser's mic permission for this site."
+          : "Microphone unavailable. Check your browser's mic permission for this site.",
+      );
     }
-  }, []);
+  }, [disabled, state, language, onTranscript, onError, clearTimer, stopRecording]);
+
+  // Clean up timer and any active recording on unmount.
+  useEffect(() => {
+    return () => {
+      clearTimer();
+      const recorder = recorderRef.current;
+      if (recorder && recorder.state === "recording") {
+        recorder.stop();
+      }
+    };
+  }, [clearTimer]);
 
   if (state === "processing") {
     return (
@@ -97,15 +151,14 @@ export function VoiceButton({
         variant="destructive"
         size="sm"
         className="relative"
-        onMouseUp={stopRecording}
-        onMouseLeave={stopRecording}
-        onTouchEnd={stopRecording}
+        onClick={stopRecording}
+        onContextMenu={(e) => e.preventDefault()}
         type="button"
-        title="Release to stop"
+        title="Tap to stop"
       >
         <span className="absolute inset-0 rounded-[inherit] bg-danger/30 animate-pulse" />
         <MicOff />
-        <span>Release</span>
+        <span>{formatElapsed(elapsed)}</span>
       </Button>
     );
   }
@@ -114,10 +167,10 @@ export function VoiceButton({
     <Button
       variant="secondary"
       size="sm"
-      onMouseDown={startRecording}
-      onTouchStart={startRecording}
+      onClick={startRecording}
+      onContextMenu={(e) => e.preventDefault()}
       disabled={disabled}
-      title="Hold to record"
+      title="Tap to record"
       type="button"
     >
       <Mic />

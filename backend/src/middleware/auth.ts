@@ -20,8 +20,9 @@ export async function verifySupabaseJwt(
   request: FastifyRequest,
   reply: FastifyReply
 ): Promise<void> {
-  // DEV BYPASS: skip auth in development
-  if (process.env.NODE_ENV !== "production") {
+  // DEV BYPASS: only active when explicitly opted in. Fails closed otherwise
+  // so a missing/misconfigured env var never silently disables auth.
+  if (env.ALLOW_DEV_AUTH) {
     request.user = { sub: "dev-user-000", email: "dev@test.com", role: "authenticated" };
     return;
   }

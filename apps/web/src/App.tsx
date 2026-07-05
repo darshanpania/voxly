@@ -1,12 +1,21 @@
-import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Link,
+  Navigate,
+  useLocation,
+  useParams,
+} from "react-router-dom";
 import { ConversationPage } from "./pages/ConversationPage";
-import { SessionsPage } from "./pages/SessionsPage";
 import { ProgressPage } from "./pages/ProgressPage";
 import { VocabularyPage } from "./pages/VocabularyPage";
 import { SessionHistoryPage } from "./pages/SessionHistoryPage";
-import { MessageCircle, BarChart3, BookOpen, Clock } from "lucide-react";
+import { LoginPage } from "./pages/LoginPage";
+import { MessageCircle, BarChart3, BookOpen, Clock, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { TopBar } from "@/components/TopBar";
 
 const navLinks = [
@@ -15,6 +24,12 @@ const navLinks = [
   { to: "/vocabulary", label: "Vocabulary", icon: BookOpen },
   { to: "/history", label: "History", icon: Clock },
 ];
+
+// Redirect legacy /sessions/:id links to the merged /history/:id detail view.
+function SessionDetailRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/history/${id}`} replace />;
+}
 
 function BottomNav() {
   const location = useLocation();
@@ -45,24 +60,52 @@ function BottomNav() {
   );
 }
 
+function AppShell() {
+  return (
+    <div className="flex flex-col h-screen bg-background text-text">
+      <TopBar />
+      <main className="flex-1 overflow-hidden">
+        <Routes>
+          <Route path="/" element={<ConversationPage />} />
+          <Route path="/progress" element={<ProgressPage />} />
+          <Route path="/vocabulary" element={<VocabularyPage />} />
+          <Route path="/history" element={<SessionHistoryPage />} />
+          <Route path="/history/:id" element={<SessionHistoryPage />} />
+          {/* Legacy routes: redirect to the merged /history experience */}
+          <Route path="/sessions" element={<Navigate to="/history" replace />} />
+          <Route path="/sessions/:id" element={<SessionDetailRedirect />} />
+        </Routes>
+      </main>
+      <BottomNav />
+    </div>
+  );
+}
+
+function AuthGate() {
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background text-text">
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginPage />;
+  }
+
+  return <AppShell />;
+}
+
 export function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
-        <div className="flex flex-col h-screen bg-background text-text">
-          <TopBar />
-          <main className="flex-1 overflow-hidden">
-            <Routes>
-              <Route path="/" element={<ConversationPage />} />
-              <Route path="/sessions" element={<SessionsPage />} />
-              <Route path="/sessions/:id" element={<SessionsPage />} />
-              <Route path="/progress" element={<ProgressPage />} />
-              <Route path="/vocabulary" element={<VocabularyPage />} />
-              <Route path="/history" element={<SessionHistoryPage />} />
-            </Routes>
-          </main>
-          <BottomNav />
-        </div>
+        <AuthProvider>
+          <AuthGate />
+        </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
   );

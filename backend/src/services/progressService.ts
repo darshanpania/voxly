@@ -33,6 +33,34 @@ export interface ProgressStats {
   vocab_growth: Array<{ date: string; count: number }>;
 }
 
+// Cap applied to endedAt so a session left open in a tab (ended long after the
+// last message) can't inflate its duration beyond the actual conversation.
+const ENDED_AT_GRACE_MS = 5 * 60 * 1000;
+
+/**
+ * Derive a session's duration from message activity rather than wall clock.
+ *
+ * - Sessions with no messages contribute 0 (lastMessageAt is null).
+ * - When endedAt is present, use it but cap it at lastMessageAt + 5 minutes to
+ *   bound tab-left-open inflation.
+ * - When endedAt is absent, use lastMessageAt as the end.
+ * - Never returns a negative duration.
+ */
+export function sessionDurationMs(
+  createdAt: Date,
+  endedAt: Date | null,
+  lastMessageAt: Date | null,
+): number {
+  if (!lastMessageAt) return 0;
+
+  const activityEnd = lastMessageAt.getTime();
+  const end = endedAt
+    ? Math.min(endedAt.getTime(), activityEnd + ENDED_AT_GRACE_MS)
+    : activityEnd;
+
+  return Math.max(0, end - createdAt.getTime());
+}
+
 export async function getSessionSummary(
   sessionId: string,
 ): Promise<SessionSummary> {
@@ -190,6 +218,7 @@ export async function getVocabStats(
       state: true,
       stability: true,
       difficulty: true,
+      lapses: true,
     },
   });
 
@@ -202,7 +231,9 @@ export async function getVocabStats(
       ? allVocab.reduce((sum, v) => sum + v.difficulty, 0) / total_words
       : 0;
   const top_mistakes = allVocab
-    .filter((v) => v.timesCorrect === 0 && v.timesSeen > 1)
+    .filter((v) => v.lapses >= 1 || v.state === State.Relearning)
+    .sort((a, b) => b.lapses - a.lapses || a.stability - b.stability)
+    .slice(0, 10)
     .map((v) => v.word);
 
   const by_state = {
@@ -218,31 +249,42 @@ export async function getVocabStats(
 export async function getProgressStats(
   userId: string,
   language: string,
+  tzOffsetMinutes = 0,
 ): Promise<ProgressStats> {
+  // Local day key (YYYY-MM-DD) for a given instant, shifted by the client's
+  // timezone offset (JS getTimezoneOffset() convention: UTC minus local).
+  const dayKey = (t: Date): string =>
+    new Date(t.getTime() - tzOffsetMinutes * 60000).toISOString().slice(0, 10);
+
   const sessions = await prisma.session.findMany({
     where: { userId, language },
     orderBy: { createdAt: "asc" },
-    select: { createdAt: true, endedAt: true, difficulty: true },
+    select: {
+      createdAt: true,
+      endedAt: true,
+      difficulty: true,
+      messages: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { createdAt: true },
+      },
+    },
   });
 
   const sessions_count = sessions.length;
 
-  const now = new Date();
   const total_minutes = sessions.reduce((sum, s) => {
-    const end = s.endedAt || now;
-    return sum + (end.getTime() - s.createdAt.getTime()) / 60000;
+    const lastMessageAt = s.messages[0]?.createdAt ?? null;
+    return sum + sessionDurationMs(s.createdAt, s.endedAt, lastMessageAt) / 60000;
   }, 0);
 
   // Streak: consecutive days ending today with at least 1 session
-  const sessionDays = new Set(
-    sessions.map((s) => s.createdAt.toISOString().slice(0, 10)),
-  );
+  const sessionDays = new Set(sessions.map((s) => dayKey(s.createdAt)));
   let streak_days = 0;
   const today = new Date();
   for (let i = 0; i < 365; i++) {
-    const d = new Date(today);
-    d.setUTCDate(d.getUTCDate() - i);
-    const key = d.toISOString().slice(0, 10);
+    const d = new Date(today.getTime() - i * 86400000);
+    const key = dayKey(d);
     if (sessionDays.has(key)) {
       streak_days++;
     } else {
@@ -250,10 +292,16 @@ export async function getProgressStats(
     }
   }
 
-  const level_history = sessions.map((s) => ({
-    date: s.createdAt.toISOString(),
-    level: s.difficulty,
-  }));
+  // Collapse consecutive same-level sessions: keep the first session and only
+  // subsequent sessions where the level changed from the previous one.
+  const level_history: Array<{ date: string; level: string }> = [];
+  let prevLevel: string | null = null;
+  for (const s of sessions) {
+    if (s.difficulty !== prevLevel) {
+      level_history.push({ date: s.createdAt.toISOString(), level: s.difficulty });
+      prevLevel = s.difficulty;
+    }
+  }
 
   // Vocab growth: cumulative count by day
   const vocabItems = await prisma.vocabularyItem.findMany({
@@ -264,7 +312,7 @@ export async function getProgressStats(
 
   const dailyCounts = new Map<string, number>();
   for (const v of vocabItems) {
-    const day = v.createdAt.toISOString().slice(0, 10);
+    const day = dayKey(v.createdAt);
     dailyCounts.set(day, (dailyCounts.get(day) || 0) + 1);
   }
 
@@ -290,11 +338,12 @@ export async function getProgressStats(
 export async function reviewVocabFSRS(
   itemId: string,
   rating: Rating,
+  userId: string,
 ) {
-  const item = await prisma.vocabularyItem.findUnique({
-    where: { id: itemId },
+  const item = await prisma.vocabularyItem.findFirst({
+    where: { id: itemId, userId },
   });
-  if (!item) throw new Error("Vocabulary item not found");
+  if (!item) return null;
 
   const card: FSRSCard = {
     stability: item.stability,
@@ -337,6 +386,7 @@ export async function reviewVocabFSRS(
 export async function updateVocabAfterReview(
   itemId: string,
   wasCorrect: boolean,
+  userId: string,
 ) {
-  return reviewVocabFSRS(itemId, booleanToRating(wasCorrect));
+  return reviewVocabFSRS(itemId, booleanToRating(wasCorrect), userId);
 }

@@ -5,6 +5,8 @@ const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
 export interface TranscriptionResult {
   transcript: string;
+  /** Audio duration in seconds, when Whisper reports it (verbose_json). */
+  duration?: number;
 }
 
 export async function transcribeAudio(
@@ -20,9 +22,16 @@ export async function transcribeAudio(
     model: "whisper-1",
     file,
     language: language === "es" ? "es" : language,
+    response_format: "verbose_json",
   });
 
-  return { transcript: response.text };
+  // verbose_json responses include a numeric `duration` (seconds).
+  const duration =
+    typeof (response as { duration?: number }).duration === "number"
+      ? (response as { duration: number }).duration
+      : undefined;
+
+  return { transcript: response.text, duration };
 }
 
 function mimeFromFilename(filename: string): string {

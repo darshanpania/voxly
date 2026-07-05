@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
-import { Send, List } from "lucide-react";
+import { Send } from "lucide-react";
 import { SessionHeader } from "../components/SessionHeader";
 import { MessageBubble } from "../components/MessageBubble";
 import { VoiceButton } from "../components/VoiceButton";
@@ -12,21 +11,31 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
+const LANGUAGE = "es";
+const ACTIVE_SESSION_KEY = "voxly:activeSession";
+
+// Temp ids for the optimistic bubbles shown while a reply streams in (#20).
+const PENDING_USER_ID = "pending-user";
+const PENDING_ASSISTANT_ID = "pending-assistant";
 
 export function ConversationPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
   const [difficulty, setDifficulty] = useState("A1");
   const [mode, setMode] = useState("helper");
   const [showFeedback, setShowFeedback] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [levelBanner, setLevelBanner] = useState<{ direction: "up" | "down"; targetLevel: string } | null>(null);
+  const [pendingChange, setPendingChange] = useState<{ type: "level" | "mode"; value: string } | null>(null);
   const consecutiveSignalRef = useRef<{ signal: string; count: number }>({ signal: "", count: 0 });
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const initRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const tts = useTTS();
 
   const scrollToBottom = () => {
@@ -37,15 +46,96 @@ export function ConversationPage() {
     scrollToBottom();
   }, [messages]);
 
-  // Create session on first load or when settings change
+  // --- Session bootstrap: resume an active session, else eagerly create one so
+  // Sofía greets first (#9, #16). Guarded against StrictMode double-invocation.
+  useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
+    void initConversation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function initConversation() {
+    setInitializing(true);
+
+    // 1. Attempt to resume the last active, unfinished session (#9).
+    const savedId = localStorage.getItem(ACTIVE_SESSION_KEY);
+    if (savedId) {
+      try {
+        const session = await api.getSession(savedId);
+        if (session && !session.endedAt) {
+          setSessionId(session.id);
+          setDifficulty(session.difficulty);
+          setMode(session.mode);
+          setMessages(session.messages ?? []);
+          setInitializing(false);
+          return;
+        }
+      } catch {
+        // fall through to a fresh session
+      }
+      localStorage.removeItem(ACTIVE_SESSION_KEY);
+    }
+
+    // 2. Initialize the level from the persisted profile (#8).
+    let level = "A1";
+    try {
+      const profile = await api.getProfile(LANGUAGE);
+      level = profile.currentLevel || "A1";
+    } catch {
+      // keep the A1 default on failure
+    }
+    setDifficulty(level);
+
+    // 3. Eagerly create a session so Sofía speaks first (#16).
+    await startSession(level, mode);
+  }
+
+  // Create a fresh session and load its canned greeting into the view (#16).
+  async function startSession(level: string, sessionMode: string) {
+    setInitializing(true);
+    setError(null);
+    try {
+      const session = await api.createSession({
+        language: LANGUAGE,
+        difficulty: level,
+        mode: sessionMode,
+      });
+      setSessionId(session.id);
+      setMessages(session.messages ?? []);
+      localStorage.setItem(ACTIVE_SESSION_KEY, session.id);
+      const greeting = session.messages?.[0];
+      if (greeting) tts.play(greeting.content);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setInitializing(false);
+    }
+  }
+
+  function resetConversationState() {
+    setMessages([]);
+    setError(null);
+    setSessionEnded(false);
+    setLevelBanner(null);
+    setPendingChange(null);
+    consecutiveSignalRef.current = { signal: "", count: 0 };
+    clearTimeout(bannerTimerRef.current);
+  }
+
+  // Reuse the already-created session; only create as a fallback (#16).
   const ensureSession = async () => {
     if (sessionId) return sessionId;
     const session = await api.createSession({
-      language: "es",
+      language: LANGUAGE,
       difficulty,
       mode,
     });
     setSessionId(session.id);
+    localStorage.setItem(ACTIVE_SESSION_KEY, session.id);
+    if (session.messages && session.messages.length > 0) {
+      setMessages((prev) => [...session.messages!, ...prev]);
+    }
     return session.id;
   };
 
@@ -58,10 +148,31 @@ export function ConversationPage() {
 
     try {
       const sid = await ensureSession();
-      const res = await api.sendMessage(sid, text);
 
+      // Show optimistic bubbles immediately: the user's message and an empty
+      // assistant bubble that fills in as tokens stream (#20).
+      const now = new Date().toISOString();
       setMessages((prev) => [
         ...prev,
+        { id: PENDING_USER_ID, sessionId: sid, role: "user", content: text, createdAt: now },
+        { id: PENDING_ASSISTANT_ID, sessionId: sid, role: "assistant", content: "", createdAt: now },
+      ]);
+
+      const res = await api.sendMessageStream(sid, text, (delta) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === PENDING_ASSISTANT_ID
+              ? { ...m, content: m.content + delta }
+              : m,
+          ),
+        );
+      });
+
+      // Swap both temp bubbles for the persisted messages in one update.
+      setMessages((prev) => [
+        ...prev.filter(
+          (m) => m.id !== PENDING_USER_ID && m.id !== PENDING_ASSISTANT_ID,
+        ),
         res.userMessage,
         { ...res.assistantMessage, feedback: res.feedback, replyLines: res.assistantMessage.replyLines },
       ]);
@@ -95,20 +206,33 @@ export function ConversationPage() {
       // Auto-play assistant reply
       tts.play(res.assistantMessage.content);
     } catch (err) {
+      // Drop the optimistic bubbles and restore the text so the user can retry.
+      setMessages((prev) =>
+        prev.filter(
+          (m) => m.id !== PENDING_USER_ID && m.id !== PENDING_ASSISTANT_ID,
+        ),
+      );
+      setInput(text);
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleTranscript = useCallback(
-    (transcript: string) => {
-      setInput(transcript);
-      handleSend(transcript);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loading, sessionId, difficulty, mode],
-  );
+  // Whisper regularly mishears beginners, so don't auto-send. Drop the
+  // transcript into the input and focus it so the learner can review/edit
+  // before tapping Send (#12).
+  const handleTranscript = useCallback((transcript: string) => {
+    setInput(transcript);
+    setError(null);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      }
+    });
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -118,35 +242,77 @@ export function ConversationPage() {
   };
 
   const handleEndSession = async () => {
-    if (sessionId && messages.length > 0) {
-      try {
-        await api.endSession(sessionId);
-      } catch {
-        // Don't block UI if the API call fails
-      }
+    if (sessionId) {
+      api.endSession(sessionId).catch(() => {});
       setSessionEnded(true);
+      localStorage.removeItem(ACTIVE_SESSION_KEY);
     }
   };
 
-  const handleNewSession = () => {
+  const handleNewSession = async () => {
+    resetConversationState();
     setSessionId(null);
-    setMessages([]);
-    setError(null);
-    setSessionEnded(false);
-    setLevelBanner(null);
-    consecutiveSignalRef.current = { signal: "", count: 0 };
-    clearTimeout(bannerTimerRef.current);
+    await startSession(difficulty, mode);
   };
 
-  const handleDifficultyChange = (d: string) => {
-    setDifficulty(d);
-    handleNewSession();
+  // Apply a level/mode change: close the old session, persist level, and start
+  // fresh with the new settings (#8, #17). Assumes any needed confirmation has
+  // already been obtained.
+  async function applyChange(type: "level" | "mode", value: string) {
+    const oldSessionId = sessionId;
+    const newLevel = type === "level" ? value : difficulty;
+    const newMode = type === "mode" ? value : mode;
+
+    // Close the abandoned session server-side so empty sessions don't linger.
+    if (oldSessionId) {
+      api.endSession(oldSessionId).catch(() => {});
+    }
+
+    if (type === "level") {
+      setDifficulty(value);
+      // Level is persisted only via the profile now (#8).
+      api.updateProfileLevel(LANGUAGE, value).catch(() => {});
+    } else {
+      setMode(value);
+    }
+
+    resetConversationState();
+    setSessionId(null);
+    await startSession(newLevel, newMode);
+  }
+
+  const hasUserMessage = messages.some((m) => m.role === "user");
+
+  // Level/mode change destroys the current conversation — confirm first if the
+  // learner has actually said something (#17).
+  const requestChange = (type: "level" | "mode", value: string) => {
+    if (type === "level" && value === difficulty) return;
+    if (type === "mode" && value === mode) return;
+    if (hasUserMessage) {
+      setPendingChange({ type, value });
+      return;
+    }
+    void applyChange(type, value);
   };
+
+  const handleDifficultyChange = (d: string) => requestChange("level", d);
+  const handleModeChange = (m: string) => requestChange("mode", m);
+
+  const confirmPendingChange = () => {
+    if (!pendingChange) return;
+    const { type, value } = pendingChange;
+    setPendingChange(null);
+    void applyChange(type, value);
+  };
+
+  const cancelPendingChange = () => setPendingChange(null);
 
   const handleLevelBannerConfirm = () => {
     if (levelBanner) {
-      handleDifficultyChange(levelBanner.targetLevel);
+      const target = levelBanner.targetLevel;
       setLevelBanner(null);
+      // The banner button is itself explicit confirmation — apply directly (#17).
+      void applyChange("level", target);
     }
   };
 
@@ -154,13 +320,15 @@ export function ConversationPage() {
     setLevelBanner(null);
   };
 
-  const handleModeChange = (m: string) => {
-    setMode(m);
-    handleNewSession();
-  };
-
   const lastAssistantMsg = [...messages].reverse().find((m) => m.role === "assistant");
   const awaitingCorrection = lastAssistantMsg?.feedback?.awaitingCorrection;
+  const preparing = initializing && messages.length === 0;
+
+  // Typing dots stand in for the streaming assistant bubble only until its first
+  // token arrives; after that the bubble itself shows the growing reply (#20).
+  const streamingAssistant = messages.find((m) => m.id === PENDING_ASSISTANT_ID);
+  const showTypingDots =
+    loading && (!streamingAssistant || streamingAssistant.content.length === 0);
 
   return (
     <div className="flex flex-col h-full">
@@ -177,43 +345,35 @@ export function ConversationPage() {
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        {messages.length === 0 && !loading && (
+        {preparing && (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-center pt-12">
-            {/* Sofia avatar */}
             <div
-              className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-lg"
+              className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-lg animate-pulse"
               style={{ background: "linear-gradient(135deg, var(--color-primary), var(--color-accent))" }}
             >
               S
             </div>
-            {/* Gradient greeting */}
-            <h2
-              className="text-4xl font-bold"
-              style={{
-                background: "linear-gradient(135deg, var(--color-primary), var(--color-accent))",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
-              }}
-            >
-              ¡Hola!
-            </h2>
-            <p className="text-text-muted text-base max-w-xs">
-              I'm <span className="text-text font-semibold">Sofia</span>, your Spanish tutor.
-              Type a message in Spanish (or English) to begin!
-            </p>
-            <p className="text-text-dim text-sm">
-              Level: {difficulty} · Mode: {mode}
+            <p className="text-text-muted text-sm">
+              Sofia is getting ready…
             </p>
           </div>
         )}
 
-        {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} showFeedback={showFeedback} />
-        ))}
+        {messages.map((m) =>
+          // The empty streaming bubble is represented by the typing dots below
+          // until its first token arrives, so skip rendering an empty bubble.
+          m.id === PENDING_ASSISTANT_ID && m.content.length === 0 ? null : (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              showFeedback={showFeedback}
+              immersion={mode === "immersion"}
+            />
+          ),
+        )}
 
         {/* Typing indicator */}
-        {loading && (
+        {showTypingDots && (
           <div className="flex items-end gap-2 animate-fade-in">
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
@@ -253,6 +413,25 @@ export function ConversationPage() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Confirm-before-discard banner (#17) */}
+      {pendingChange && (
+        <div className="animate-slide-up bg-surface-2 border border-border rounded-lg mx-3 mb-2 p-3 flex items-center justify-between text-sm">
+          <span className="text-text-muted">
+            {pendingChange.type === "level"
+              ? `Switch to ${pendingChange.value}? This starts a new conversation.`
+              : `Switch to ${pendingChange.value === "immersion" ? "Immersion" : "Helper"} mode? This starts a new conversation.`}
+          </span>
+          <div className="flex gap-2 ml-3 shrink-0">
+            <Button size="sm" onClick={confirmPendingChange}>
+              Continue
+            </Button>
+            <Button variant="ghost" size="sm" onClick={cancelPendingChange}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Difficulty level-up/down banner */}
       {levelBanner && !awaitingCorrection && (
         <div className="animate-slide-up bg-surface-2 border border-border rounded-lg mx-3 mb-2 p-3 flex items-center justify-between text-sm">
@@ -274,7 +453,7 @@ export function ConversationPage() {
 
       {/* Input bar */}
       <div className="bg-surface/80 backdrop-blur-xl border-t border-border p-3 flex items-end gap-2">
-        {sessionId && messages.length > 0 && !sessionEnded && (
+        {sessionId && !sessionEnded && (
           <Button
             variant="outline"
             size="sm"
@@ -295,13 +474,8 @@ export function ConversationPage() {
           </Button>
         )}
 
-        <Button variant="ghost" size="icon" asChild className="shrink-0">
-          <Link to="/sessions" title="Past Sessions">
-            <List size={18} />
-          </Link>
-        </Button>
-
         <textarea
+          ref={textareaRef}
           className={cn(
             "flex-1 bg-surface-2 border border-border rounded-xl px-4 py-2.5",
             "text-text placeholder:text-text-dim resize-none",
@@ -313,14 +487,18 @@ export function ConversationPage() {
           onKeyDown={handleKeyDown}
           placeholder={awaitingCorrection ? "Try the correction..." : "Type your message..."}
           rows={1}
-          disabled={loading}
+          disabled={loading || sessionEnded}
         />
 
-        <VoiceButton onTranscript={handleTranscript} disabled={loading} />
+        <VoiceButton
+          onTranscript={handleTranscript}
+          onError={setError}
+          disabled={loading || sessionEnded}
+        />
 
         <Button
           onClick={() => handleSend()}
-          disabled={loading || !input.trim()}
+          disabled={loading || sessionEnded || !input.trim()}
           size="icon"
           className="shrink-0"
         >

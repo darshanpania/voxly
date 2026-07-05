@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -12,7 +11,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import type { ProgressStats, VocabStats } from "../lib/api";
+import { ErrorState } from "../components/ErrorState";
+import { useApiData } from "../hooks/useApiData";
 import * as api from "../lib/api";
 
 function VocabChart({ data }: { data: Array<{ date: string; count: number }> }) {
@@ -109,19 +109,11 @@ function VocabChart({ data }: { data: Array<{ date: string; count: number }> }) 
 }
 
 export function ProgressPage() {
-  const [progress, setProgress] = useState<ProgressStats | null>(null);
-  const [vocabStats, setVocabStats] = useState<VocabStats | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    Promise.all([api.getProgress("es"), api.getVocabStats("es")])
-      .then(([p, v]) => {
-        setProgress(p);
-        setVocabStats(v);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const { data, loading, error, retry } = useApiData(
+    () => Promise.all([api.getProgress("es"), api.getVocabStats("es")]),
+    [],
+  );
+  const [progress, vocabStats] = data ?? [null, null];
 
   return (
     <div className="flex flex-col h-full">
@@ -144,6 +136,8 @@ export function ProgressPage() {
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="w-6 h-6 text-primary animate-spin" />
         </div>
+      ) : error ? (
+        <ErrorState error={error} retry={retry} />
       ) : !progress ? (
         <div className="flex-1 flex items-center justify-center">
           <p className="text-text-muted text-sm">No progress data yet.</p>
@@ -170,7 +164,7 @@ export function ProgressPage() {
             <Card className="text-center py-4">
               <BookOpen className="w-5 h-5 text-success mx-auto mb-1" />
               <div className="text-2xl font-bold gradient-text">{vocabStats?.total_words ?? 0}</div>
-              <div className="text-xs text-text-muted mt-1">Words Learned</div>
+              <div className="text-xs text-text-muted mt-1">Words Collected</div>
             </Card>
           </div>
 
@@ -232,9 +226,16 @@ export function ProgressPage() {
                     key={i}
                     className="flex items-center justify-between py-1.5 border-b border-border last:border-0"
                   >
-                    <span className="text-sm text-text-muted">
-                      {new Date(entry.date).toLocaleDateString()}
-                    </span>
+                    <div className="flex flex-col">
+                      <span className="text-sm text-text">
+                        {i === 0
+                          ? `Started at ${entry.level}`
+                          : `Moved to ${entry.level}`}
+                      </span>
+                      <span className="text-xs text-text-muted">
+                        {new Date(entry.date).toLocaleDateString()}
+                      </span>
+                    </div>
                     <Badge variant="default">{entry.level}</Badge>
                   </li>
                 ))}
