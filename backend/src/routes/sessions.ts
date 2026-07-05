@@ -318,6 +318,11 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
         "cache-control": "no-cache",
         connection: "keep-alive",
         "x-accel-buffering": "no",
+        // hijack() bypasses the @fastify/cors hooks, so the CORS headers must be
+        // set on the raw response here — otherwise the browser blocks the SSE
+        // stream. Reflect the request origin to match the `origin: true` config.
+        "access-control-allow-origin": request.headers.origin ?? "*",
+        vary: "Origin",
       });
 
       const emit = (event: string, data: unknown) => {
