@@ -26,9 +26,11 @@ const sendMessageSchema = z.object({
 // No LLM call — instant and free. Each pairs a natural Spanish greeting with a
 // level-appropriate opening question to invite the learner to respond.
 const GREETINGS: Record<string, string> = {
-  A1: "¡Hola! Soy Sofía. ¿Cómo estás hoy?",
-  A2: "¡Hola! Me llamo Sofía. ¿Qué has hecho hoy?",
-  B1: "¡Hola! Soy Sofía, tu tutora de español. Cuéntame, ¿qué te gusta hacer en tu tiempo libre?",
+  // A1–B1 openers also tell the learner, in English, that they can switch
+  // languages and ask tutor questions at any time.
+  A1: "¡Hola! Soy Sofía. You can talk to me in English or Spanish, and ask me how to say anything. ¿Cómo estás hoy?",
+  A2: "¡Hola! Me llamo Sofía. Ask me in English any time you get stuck. ¿Qué has hecho hoy?",
+  B1: "¡Hola! Soy Sofía, tu tutora de español. Si te atascas, pregúntame en inglés. Cuéntame, ¿qué te gusta hacer en tu tiempo libre?",
   B2: "¡Hola! Soy Sofía. Me encantaría conocerte mejor. ¿Cómo ha ido tu día hasta ahora?",
   C1: "¡Hola! Soy Sofía. Para ir entrando en calor, ¿hay algún tema que te apetezca comentar hoy?",
   C2: "¡Hola! Soy Sofía. Antes de nada, cuéntame: ¿qué te ha llamado la atención últimamente, ya sea una noticia, una lectura o una conversación?",

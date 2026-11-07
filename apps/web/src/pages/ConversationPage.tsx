@@ -1,18 +1,27 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send } from "lucide-react";
+import { Ear, EarOff } from "lucide-react";
 import { SessionHeader } from "../components/SessionHeader";
 import { MessageBubble } from "../components/MessageBubble";
 import { VoiceButton } from "../components/VoiceButton";
 import { SessionSummaryCard } from "../components/SessionSummaryCard";
-import { useTTS } from "../hooks/useTTS";
+import { useTTS, type PlayResult } from "../hooks/useTTS";
+import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
 import type { Message } from "../lib/api";
 import * as api from "../lib/api";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
 const LANGUAGE = "es";
 const ACTIVE_SESSION_KEY = "voxly:activeSession";
+const HANDS_FREE_KEY = "voxly:handsFree";
+
+function loadHandsFree(): boolean {
+  try {
+    return localStorage.getItem(HANDS_FREE_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
 
 // Temp ids for the optimistic bubbles shown while a reply streams in (#20).
 const PENDING_USER_ID = "pending-user";
@@ -21,7 +30,6 @@ const PENDING_ASSISTANT_ID = "pending-assistant";
 export function ConversationPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [difficulty, setDifficulty] = useState("A1");
@@ -35,8 +43,13 @@ export function ConversationPage() {
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const initRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const tts = useTTS();
+  // Hands-free: after Sofía finishes speaking, start listening again on our own.
+  const [handsFree, setHandsFree] = useState(loadHandsFree);
+  const handsFreeRef = useRef(handsFree);
+  handsFreeRef.current = handsFree;
+  const sessionEndedRef = useRef(sessionEnded);
+  sessionEndedRef.current = sessionEnded;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -105,7 +118,7 @@ export function ConversationPage() {
       setMessages(session.messages ?? []);
       localStorage.setItem(ACTIVE_SESSION_KEY, session.id);
       const greeting = session.messages?.[0];
-      if (greeting) tts.play(greeting.content);
+      if (greeting) void speakThenListen(greeting.content);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -139,10 +152,23 @@ export function ConversationPage() {
     return session.id;
   };
 
-  const handleSend = async (overrideText?: string) => {
-    const text = (overrideText ?? input).trim();
+  // Speak Sofía's line, then (hands-free) open the mic for the learner's turn.
+  // Muted counts as "done speaking" so a hands-free reader can still answer.
+  async function speakThenListen(text: string) {
+    const result: PlayResult = await tts.play(text);
+    if (
+      (result === "ended" || result === "muted") &&
+      handsFreeRef.current &&
+      !sessionEndedRef.current
+    ) {
+      void voice.start();
+    }
+  }
+
+  // Voice-only: every turn is a transcript, sent as soon as it arrives.
+  const handleSend = async (spoken: string) => {
+    const text = spoken.trim();
     if (!text || loading) return;
-    if (!overrideText) setInput("");
     setError(null);
     setLoading(true);
 
@@ -203,45 +229,58 @@ export function ConversationPage() {
         consecutiveSignalRef.current = { signal: "", count: 0 };
       }
 
-      // Auto-play assistant reply
-      tts.play(res.assistantMessage.content);
+      // Speak the reply, then hand the turn back to the learner.
+      void speakThenListen(res.assistantMessage.content);
     } catch (err) {
-      // Drop the optimistic bubbles and restore the text so the user can retry.
+      // Drop the optimistic bubbles; the learner can simply say it again.
       setMessages((prev) =>
         prev.filter(
           (m) => m.id !== PENDING_USER_ID && m.id !== PENDING_ASSISTANT_ID,
         ),
       );
-      setInput(text);
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
   };
 
-  // Whisper regularly mishears beginners, so don't auto-send. Drop the
-  // transcript into the input and focus it so the learner can review/edit
-  // before tapping Send (#12).
+  // The app is voice-only, so a transcript is sent straight away. Sofía is
+  // told the text is speech-to-text and to allow for recognition errors.
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
   const handleTranscript = useCallback((transcript: string) => {
-    setInput(transcript);
-    setError(null);
-    requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (el) {
-        el.focus();
-        el.setSelectionRange(el.value.length, el.value.length);
-      }
-    });
+    void handleSendRef.current(transcript);
   }, []);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+  const voice = useVoiceRecorder({
+    language: LANGUAGE,
+    onTranscript: handleTranscript,
+    onError: setError,
+  });
+
+  // Tapping the mic while Sofía talks cuts her off and starts listening.
+  const handleTalk = () => {
+    setError(null);
+    tts.stop();
+    void voice.start();
+  };
+
+  const toggleHandsFree = () => {
+    setHandsFree((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(HANDS_FREE_KEY, next ? "on" : "off");
+      } catch {
+        // Non-critical preference.
+      }
+      if (!next) voice.cancel();
+      return next;
+    });
   };
 
   const handleEndSession = async () => {
+    voice.cancel();
+    tts.stop();
     if (sessionId) {
       api.endSession(sessionId).catch(() => {});
       setSessionEnded(true);
@@ -250,6 +289,8 @@ export function ConversationPage() {
   };
 
   const handleNewSession = async () => {
+    voice.cancel();
+    tts.stop();
     resetConversationState();
     setSessionId(null);
     await startSession(difficulty, mode);
@@ -262,6 +303,9 @@ export function ConversationPage() {
     const oldSessionId = sessionId;
     const newLevel = type === "level" ? value : difficulty;
     const newMode = type === "mode" ? value : mode;
+
+    voice.cancel();
+    tts.stop();
 
     // Close the abandoned session server-side so empty sessions don't linger.
     if (oldSessionId) {
@@ -451,59 +495,48 @@ export function ConversationPage() {
         </div>
       )}
 
-      {/* Input bar */}
-      <div className="bg-surface/80 backdrop-blur-xl border-t border-border p-3 flex items-end gap-2">
-        {sessionId && !sessionEnded && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleEndSession}
-            className="shrink-0"
-          >
-            End
-          </Button>
-        )}
-        {sessionEnded && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleNewSession}
-            className="shrink-0"
-          >
-            New Session
-          </Button>
-        )}
-
-        <textarea
-          ref={textareaRef}
-          className={cn(
-            "flex-1 bg-surface-2 border border-border rounded-xl px-4 py-2.5",
-            "text-text placeholder:text-text-dim resize-none",
-            "focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20",
-            "transition-colors text-sm leading-relaxed",
+      {/* Voice bar: the app is voice-only, so the mic is the only input. */}
+      <div className="bg-surface/80 backdrop-blur-xl border-t border-border px-3 py-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <div className="justify-self-start">
+          {sessionId && !sessionEnded && (
+            <Button variant="outline" size="sm" onClick={handleEndSession}>
+              End
+            </Button>
           )}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={awaitingCorrection ? "Try the correction..." : "Type your message..."}
-          rows={1}
-          disabled={loading || sessionEnded}
-        />
+          {sessionEnded && (
+            <Button variant="outline" size="sm" onClick={handleNewSession}>
+              New Session
+            </Button>
+          )}
+        </div>
 
         <VoiceButton
-          onTranscript={handleTranscript}
-          onError={setError}
-          disabled={loading || sessionEnded}
+          state={voice.state}
+          elapsed={voice.elapsed}
+          heardSpeech={voice.heardSpeech}
+          busy={loading}
+          speaking={tts.isSpeaking}
+          disabled={sessionEnded || initializing || !sessionId}
+          onStart={handleTalk}
+          onStop={voice.stop}
         />
 
-        <Button
-          onClick={() => handleSend()}
-          disabled={loading || sessionEnded || !input.trim()}
-          size="icon"
-          className="shrink-0"
-        >
-          <Send size={16} />
-        </Button>
+        <div className="justify-self-end">
+          <Button
+            variant={handsFree ? "secondary" : "ghost"}
+            size="sm"
+            onClick={toggleHandsFree}
+            aria-pressed={handsFree}
+            title={
+              handsFree
+                ? "Hands-free on: the mic opens after Sofia speaks"
+                : "Hands-free off: tap the mic for each turn"
+            }
+          >
+            {handsFree ? <Ear /> : <EarOff />}
+            <span className="hidden min-[400px]:inline">Hands-free</span>
+          </Button>
+        </div>
       </div>
     </div>
   );

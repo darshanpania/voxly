@@ -1,18 +1,18 @@
-import { useState, useRef, useCallback, useEffect } from "react";
-import { Mic, MicOff, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import * as api from "../lib/api";
-
-type VoiceState = "idle" | "recording" | "processing";
-
-// Auto-stop after this many seconds as a safety cap.
-const MAX_RECORDING_SECONDS = 60;
+import { Mic, Square, Loader2, Volume2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { VoiceState } from "../hooks/useVoiceRecorder";
 
 interface Props {
-  onTranscript: (transcript: string) => void;
-  onError?: (message: string) => void;
+  state: VoiceState;
+  elapsed: number;
+  heardSpeech: boolean;
+  /** Sofía is thinking (the reply is on its way). */
+  busy: boolean;
+  /** Sofía is speaking. A tap interrupts her and starts listening. */
+  speaking: boolean;
   disabled?: boolean;
-  language?: string;
+  onStart: () => void;
+  onStop: () => void;
 }
 
 function formatElapsed(seconds: number): string {
@@ -21,160 +21,66 @@ function formatElapsed(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+/** The one control of the voice-only conversation: a large talk button with a status line. */
 export function VoiceButton({
-  onTranscript,
-  onError,
+  state,
+  elapsed,
+  heardSpeech,
+  busy,
+  speaking,
   disabled = false,
-  language = "es",
+  onStart,
+  onStop,
 }: Props) {
-  const [state, setState] = useState<VoiceState>("idle");
-  const [elapsed, setElapsed] = useState(0);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recording = state === "recording";
+  const processing = state === "processing";
+  const waiting = processing || busy;
 
-  const clearTimer = useCallback(() => {
-    if (timerRef.current !== null) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
-
-  const stopRecording = useCallback(() => {
-    clearTimer();
-    if (recorderRef.current && recorderRef.current.state === "recording") {
-      recorderRef.current.stop();
-    }
-  }, [clearTimer]);
-
-  const startRecording = useCallback(async () => {
-    if (disabled || state !== "idle") return;
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : "audio/mp4",
-      });
-
-      chunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = async () => {
-        clearTimer();
-        // Stop all tracks to release the mic
-        stream.getTracks().forEach((t) => t.stop());
-
-        const blob = new Blob(chunksRef.current, {
-          type: recorder.mimeType,
-        });
-
-        if (blob.size === 0) {
-          setState("idle");
-          return;
-        }
-
-        setState("processing");
-        try {
-          const { transcript } = await api.transcribeAudio(blob, language);
-          if (transcript.trim()) {
-            onTranscript(transcript.trim());
-          }
-        } catch {
-          // Transcription failure — user can retry
-          onError?.("Couldn't transcribe that. Please try again.");
-        } finally {
-          setState("idle");
-        }
-      };
-
-      recorderRef.current = recorder;
-      recorder.start();
-      setState("recording");
-      setElapsed(0);
-
-      // Tick every second; auto-stop at the safety cap.
-      clearTimer();
-      timerRef.current = setInterval(() => {
-        setElapsed((prev) => {
-          const next = prev + 1;
-          if (next >= MAX_RECORDING_SECONDS) {
-            stopRecording();
-          }
-          return next;
-        });
-      }, 1000);
-    } catch (err) {
-      // Mic permission denied or otherwise unavailable
-      setState("idle");
-      const denied =
-        err instanceof DOMException && err.name === "NotAllowedError";
-      onError?.(
-        denied
-          ? "Microphone access was denied. Check your browser's mic permission for this site."
-          : "Microphone unavailable. Check your browser's mic permission for this site.",
-      );
-    }
-  }, [disabled, state, language, onTranscript, onError, clearTimer, stopRecording]);
-
-  // Clean up timer and any active recording on unmount.
-  useEffect(() => {
-    return () => {
-      clearTimer();
-      const recorder = recorderRef.current;
-      if (recorder && recorder.state === "recording") {
-        recorder.stop();
-      }
-    };
-  }, [clearTimer]);
-
-  if (state === "processing") {
-    return (
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled
-        type="button"
-      >
-        <Loader2 className="animate-spin" />
-        <span>Processing</span>
-      </Button>
-    );
-  }
-
-  if (state === "recording") {
-    return (
-      <Button
-        variant="destructive"
-        size="sm"
-        className="relative"
-        onClick={stopRecording}
-        onContextMenu={(e) => e.preventDefault()}
-        type="button"
-        title="Tap to stop"
-      >
-        <span className="absolute inset-0 rounded-[inherit] bg-danger/30 animate-pulse" />
-        <MicOff />
-        <span>{formatElapsed(elapsed)}</span>
-      </Button>
-    );
-  }
+  const status = recording
+    ? heardSpeech
+      ? `Listening… ${formatElapsed(elapsed)} · tap to send`
+      : "Listening… speak English or Spanish"
+    : processing
+      ? "Catching that…"
+      : busy
+        ? "Sofia is thinking…"
+        : speaking
+          ? "Sofia is speaking · tap to interrupt"
+          : disabled
+            ? ""
+            : "Tap and talk";
 
   return (
-    <Button
-      variant="secondary"
-      size="sm"
-      onClick={startRecording}
-      onContextMenu={(e) => e.preventDefault()}
-      disabled={disabled}
-      title="Tap to record"
-      type="button"
-    >
-      <Mic />
-      <span>Mic</span>
-    </Button>
+    <div className="flex flex-col items-center gap-1.5 min-w-0">
+      <button
+        type="button"
+        onClick={recording ? onStop : onStart}
+        onContextMenu={(e) => e.preventDefault()}
+        disabled={disabled || waiting}
+        aria-label={recording ? "Stop and send" : "Talk to Sofia"}
+        className={cn(
+          "relative w-16 h-16 rounded-full flex items-center justify-center text-white shadow-lg transition-transform",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+          "disabled:opacity-50 disabled:cursor-not-allowed active:scale-95",
+          recording ? "bg-danger" : "bg-primary",
+        )}
+      >
+        {recording && (
+          <span className="absolute inset-0 rounded-full bg-danger/40 animate-ping" />
+        )}
+        {recording ? (
+          <Square size={22} className="relative" />
+        ) : waiting ? (
+          <Loader2 size={26} className="animate-spin" />
+        ) : speaking ? (
+          <Volume2 size={26} className="animate-pulse" />
+        ) : (
+          <Mic size={26} />
+        )}
+      </button>
+      <span className="text-text-muted text-xs h-4 truncate max-w-full" aria-live="polite">
+        {status}
+      </span>
+    </div>
   );
 }

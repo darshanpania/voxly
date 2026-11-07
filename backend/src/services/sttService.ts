@@ -18,10 +18,14 @@ export async function transcribeAudio(
     type: mimeFromFilename(filename),
   });
 
+  // Voxly is a bilingual tutor: the learner switches freely between English
+  // ("How do I say ... in Spanish?") and the target language. Forcing
+  // `language` makes Whisper mangle English questions into Spanish, so let it
+  // auto-detect and bias it with a short bilingual prompt instead.
   const response = await openai.audio.transcriptions.create({
     model: "whisper-1",
     file,
-    language: language === "es" ? "es" : language,
+    prompt: bilingualPrompt(language),
     response_format: "verbose_json",
   });
 
@@ -32,6 +36,17 @@ export async function transcribeAudio(
       : undefined;
 
   return { transcript: response.text, duration };
+}
+
+/**
+ * Whisper uses the prompt as preceding context, which nudges it toward the
+ * right spelling, punctuation and language for short mixed-language turns.
+ */
+function bilingualPrompt(language: string): string {
+  if (language === "es") {
+    return "Conversación entre una tutora de español y su alumno, en español y en inglés. How do I say 'I'm hungry' in Spanish? Tengo hambre. What does 'madrugar' mean? ¿Cómo se dice 'tired'?";
+  }
+  return "A bilingual language lesson that mixes English with the target language.";
 }
 
 function mimeFromFilename(filename: string): string {
