@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Trophy, AlertTriangle, Sparkles, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { SessionSummary } from "../lib/api";
@@ -28,7 +27,7 @@ export function SessionSummaryCard({ sessionId }: Props) {
       <Card className="animate-pulse">
         <CardContent className="flex flex-col items-center justify-center gap-3 py-10">
           <Loader2 className="w-6 h-6 text-primary animate-spin" />
-          <p className="text-sm text-text-muted">Generating session summary...</p>
+          <p className="text-sm text-text-muted">Writing your session summary…</p>
         </CardContent>
       </Card>
     );
@@ -51,22 +50,22 @@ export function SessionSummaryCard({ sessionId }: Props) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className={cn("flex items-center gap-2 gradient-text")}>
-          <Trophy className="w-5 h-5 text-primary shrink-0" />
-          Session Summary
+        <CardTitle className="flex items-center gap-2 font-display">
+          <Trophy className="w-5 h-5 text-es shrink-0" aria-hidden="true" />
+          Session summary
         </CardTitle>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Topics Covered */}
+        {/* Topics */}
         {summary.topics.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-medium text-text-muted uppercase tracking-wide">
-              Topics Covered
+              Topics
             </p>
             <div className="flex flex-wrap gap-1.5">
               {summary.topics.map((t, i) => (
-                <Badge key={i} variant="default">
+                <Badge key={i} variant="secondary">
                   {t}
                 </Badge>
               ))}
@@ -74,11 +73,11 @@ export function SessionSummaryCard({ sessionId }: Props) {
           </div>
         )}
 
-        {/* Areas to Improve */}
+        {/* To work on */}
         {summary.mistakes.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-medium text-text-muted uppercase tracking-wide">
-              Areas to Improve
+              To work on
             </p>
             <ul className="space-y-1">
               {summary.mistakes.map((m, i) => (
@@ -91,17 +90,21 @@ export function SessionSummaryCard({ sessionId }: Props) {
           </div>
         )}
 
-        {/* New Vocabulary */}
+        {/* New words */}
         {summary.newVocab.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-medium text-text-muted uppercase tracking-wide">
-              New Vocabulary
+              New words
             </p>
             <div className="flex flex-wrap gap-1.5">
               {summary.newVocab.map((v, i) => (
-                <Badge key={i} variant="success">
+                <span
+                  key={i}
+                  lang="es"
+                  className="inline-flex items-center rounded-full border border-es/30 bg-es/10 px-2.5 py-0.5 text-xs font-semibold text-es"
+                >
                   {v}
-                </Badge>
+                </span>
               ))}
             </div>
           </div>
@@ -110,8 +113,8 @@ export function SessionSummaryCard({ sessionId }: Props) {
         {/* Encouragement */}
         {summary.encouragement && (
           <div className="flex items-start gap-2 pt-1 border-t border-border">
-            <Sparkles className="w-4 h-4 text-accent mt-0.5 shrink-0" />
-            <p className="text-sm text-accent italic">{summary.encouragement}</p>
+            <Sparkles className="w-4 h-4 text-en mt-0.5 shrink-0" aria-hidden="true" />
+            <p className="text-sm text-en">{summary.encouragement}</p>
           </div>
         )}
       </CardContent>

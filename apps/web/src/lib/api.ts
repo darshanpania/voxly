@@ -333,7 +333,8 @@ export async function synthesizeSpeech(
   const res = await fetch(`${API_URL}/audio/synthesize`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify({ text, language }),
+    // «» only mark Spanish words for on-screen color, so the voice skips them.
+    body: JSON.stringify({ text: text.replace(/[«»]/g, ""), language }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

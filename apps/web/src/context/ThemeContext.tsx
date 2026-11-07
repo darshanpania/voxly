@@ -17,7 +17,8 @@ function getSystemTheme(): "light" | "dark" {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
     const stored = localStorage.getItem("voxly-theme") as Theme | null;
-    return stored ?? "system";
+    // Halo is designed dark-first, so dark is the default.
+    return stored ?? "dark";
   });
 
   const resolved = theme === "system" ? getSystemTheme() : theme;

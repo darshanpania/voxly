@@ -1,9 +1,9 @@
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Clock, Loader2 } from "lucide-react";
+import { ChevronRight, Clock, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { SessionSummaryCard } from "../components/SessionSummaryCard";
-import { MessageBubble } from "../components/MessageBubble";
+import { TranscriptMessage } from "../components/TranscriptMessage";
+import { PageHeader } from "../components/PageHeader";
 import { ErrorState } from "../components/ErrorState";
 import { useApiData } from "../hooks/useApiData";
 import type { Session } from "../lib/api";
@@ -34,7 +34,7 @@ function SessionList() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+        <Loader2 className="w-6 h-6 text-text-muted animate-spin" />
       </div>
     );
   }
@@ -46,48 +46,45 @@ function SessionList() {
   if (sessions.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
-        <Clock className="w-12 h-12 text-text-dim opacity-40" />
-        <p className="text-text-muted text-sm">No sessions yet</p>
+        <Clock className="w-10 h-10 text-text-dim" aria-hidden="true" />
+        <p className="m-0 text-text-muted text-sm">No sessions yet</p>
         <Link
           to="/"
-          className="text-primary text-sm hover:text-primary-hover transition-colors"
+          className="inline-flex items-center h-11 px-4 rounded-full border border-border text-sm font-medium hover:bg-surface-2"
         >
-          Start your first conversation
+          Start talking
         </Link>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-2 p-4 overflow-y-auto flex-1">
-      {sessions.map((s) => (
-        <Link key={s.id} to={`/history/${s.id}`} className="block">
-          <Card className="hover:border-primary/30 transition-colors cursor-pointer p-3">
-            <div className="flex items-center justify-between gap-3">
-              {/* Left: language + difficulty + mode */}
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="font-semibold text-sm text-text truncate">
-                  {s.language.toUpperCase()} · {s.difficulty}
+    <div className="flex-1 overflow-y-auto">
+      <ul className="m-0 list-none w-full max-w-2xl mx-auto px-5 pb-8 pt-1 flex flex-col gap-2">
+        {sessions.map((s) => (
+          <li key={s.id}>
+            <Link
+              to={`/history/${s.id}`}
+              className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 min-h-16 hover:border-border-bright transition-colors"
+            >
+              <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                <span className="text-[15px] font-semibold text-text">
+                  {new Date(s.createdAt).toLocaleDateString([], {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  })}
                 </span>
-                <Badge variant="secondary">{s.mode}</Badge>
-              </div>
-
-              {/* Right: date, duration, message count */}
-              <div className="flex items-center gap-3 shrink-0">
-                <span className="text-sm text-text-muted">
-                  {new Date(s.createdAt).toLocaleDateString()}
-                </span>
-                <span className="text-sm text-text-dim">
-                  {formatDuration(s)}
-                </span>
-                <span className="text-sm text-text-dim">
-                  {s._count?.messages ?? 0} msgs
+                <span className="text-[13px] text-text-muted">
+                  {s.difficulty} · {s.mode === "immersion" ? "Immersion" : "Helper"} ·{" "}
+                  {formatDuration(s)} · {s._count?.messages ?? 0} turns
                 </span>
               </div>
-            </div>
-          </Card>
-        </Link>
-      ))}
+              <ChevronRight className="w-4 h-4 text-text-dim shrink-0" aria-hidden="true" />
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -104,7 +101,7 @@ function SessionDetail() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+        <Loader2 className="w-6 h-6 text-text-muted animate-spin" />
       </div>
     );
   }
@@ -116,39 +113,35 @@ function SessionDetail() {
   if (!session) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <p className="text-danger text-sm">Session not found</p>
+        <p className="m-0 text-danger text-sm">Session not found</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* Session detail header bar */}
-      <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-text">
-            {session.language.toUpperCase()}
-          </span>
-          <span className="text-text-dim text-sm">·</span>
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="w-full max-w-2xl mx-auto px-5 pb-8 pt-1 flex flex-col gap-5">
+        <div className="flex flex-wrap items-center gap-2 text-[13px] text-text-muted">
           <Badge variant="secondary">{session.difficulty}</Badge>
-          <Badge variant="default">{session.mode}</Badge>
+          <Badge variant="secondary">
+            {session.mode === "immersion" ? "Immersion" : "Helper"}
+          </Badge>
+          <span>{formatDuration(session)}</span>
         </div>
-        <span className="text-sm text-text-muted shrink-0">
-          {new Date(session.createdAt).toLocaleDateString()}
-        </span>
-      </div>
 
-      {/* Stacked: session summary, then full transcript */}
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
         <SessionSummaryCard sessionId={session.id} />
 
-        <div className="flex flex-col gap-2">
+        <p className="m-0 text-[13px] text-text-muted">
+          <span className="text-es font-semibold">Amber</span> is Spanish.{" "}
+          <span className="text-en font-semibold">Blue</span> is English.
+        </p>
+        <div className="flex flex-col gap-5">
           {session.messages?.map((m) => (
-            <MessageBubble
+            <TranscriptMessage
               key={m.id}
               message={m}
               showFeedback={true}
-              immersion={session.mode === "immersion"}
+              showTranslation={true}
             />
           ))}
         </div>
@@ -162,21 +155,11 @@ export function SessionHistoryPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="px-4 py-4 border-b border-border flex items-center gap-3 shrink-0">
-        <Link
-          to={id ? "/history" : "/"}
-          className="flex items-center gap-1 text-sm text-text-muted hover:text-text transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </Link>
-        <div className="flex items-center gap-2 ml-2">
-          <Clock className="w-5 h-5 text-primary" />
-          <h2 className="text-xl font-bold gradient-text">Session History</h2>
-        </div>
-      </div>
-
+      {id ? (
+        <PageHeader title="Session" backTo="/history" backLabel="Back to history" />
+      ) : (
+        <PageHeader title="History" subtitle="Every talk with Sofía, newest first." />
+      )}
       {id ? <SessionDetail /> : <SessionList />}
     </div>
   );

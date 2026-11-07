@@ -1,29 +1,12 @@
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Link,
-  Navigate,
-  useLocation,
-  useParams,
-} from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { ConversationPage } from "./pages/ConversationPage";
 import { ProgressPage } from "./pages/ProgressPage";
-import { VocabularyPage } from "./pages/VocabularyPage";
+import { PhrasebookPage } from "./pages/PhrasebookPage";
 import { SessionHistoryPage } from "./pages/SessionHistoryPage";
 import { LoginPage } from "./pages/LoginPage";
-import { MessageCircle, BarChart3, BookOpen, Clock, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
-import { TopBar } from "@/components/TopBar";
-
-const navLinks = [
-  { to: "/", label: "Chat", icon: MessageCircle },
-  { to: "/progress", label: "Progress", icon: BarChart3 },
-  { to: "/vocabulary", label: "Vocabulary", icon: BookOpen },
-  { to: "/history", label: "History", icon: Clock },
-];
 
 // Redirect legacy /sessions/:id links to the merged /history/:id detail view.
 function SessionDetailRedirect() {
@@ -31,52 +14,28 @@ function SessionDetailRedirect() {
   return <Navigate to={`/history/${id}`} replace />;
 }
 
-function BottomNav() {
-  const location = useLocation();
-
-  return (
-    <nav className="bg-surface/80 backdrop-blur-xl border-t border-border flex items-stretch shrink-0">
-      {navLinks.map(({ to, label, icon: Icon }) => {
-        const isActive =
-          to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
-        return (
-          <Link
-            key={to}
-            to={to}
-            className={cn(
-              "flex flex-1 flex-col items-center justify-center gap-1 py-3 px-2 text-xs transition-colors",
-              isActive ? "text-primary" : "text-text-muted hover:text-text",
-            )}
-          >
-            <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
-            <span className="font-medium leading-none">{label}</span>
-            {isActive && (
-              <span className="w-1 h-1 rounded-full bg-primary mt-0.5" />
-            )}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
-
+/**
+ * Halo layout: the talk screen is home and fills the whole window. The
+ * Phrasebook, Progress and History pages open from it and each has a back
+ * button, so there is no tab bar.
+ */
 function AppShell() {
   return (
-    <div className="flex flex-col h-screen bg-background text-text">
-      <TopBar />
-      <main className="flex-1 overflow-hidden">
+    <div className="flex flex-col h-[100dvh] bg-background text-text">
+      <main className="flex-1 min-h-0 overflow-hidden">
         <Routes>
           <Route path="/" element={<ConversationPage />} />
+          <Route path="/phrasebook" element={<PhrasebookPage />} />
           <Route path="/progress" element={<ProgressPage />} />
-          <Route path="/vocabulary" element={<VocabularyPage />} />
           <Route path="/history" element={<SessionHistoryPage />} />
           <Route path="/history/:id" element={<SessionHistoryPage />} />
-          {/* Legacy routes: redirect to the merged /history experience */}
+          {/* Legacy routes */}
+          <Route path="/vocabulary" element={<Navigate to="/phrasebook" replace />} />
           <Route path="/sessions" element={<Navigate to="/history" replace />} />
           <Route path="/sessions/:id" element={<SessionDetailRedirect />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
-      <BottomNav />
     </div>
   );
 }
@@ -86,8 +45,8 @@ function AuthGate() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background text-text">
-        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+      <div className="flex h-[100dvh] items-center justify-center bg-background text-text">
+        <Loader2 className="w-6 h-6 text-text-muted animate-spin" />
       </div>
     );
   }
