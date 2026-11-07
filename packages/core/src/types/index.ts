@@ -3,8 +3,6 @@ export interface UserLanguageProfile {
   userId: string;
   language: string;
   currentLevel: string;
-  voiceSecondsUsedToday: number;
-  lastResetAt: string;
 }
 
 export interface Session {
