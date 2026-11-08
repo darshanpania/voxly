@@ -19,15 +19,18 @@ export async function transcribeAudio(
     type: mimeFromFilename(filename),
   });
 
-  // whisper-1 takes a single `language`. gpt-transcribe takes `languages`, so
-  // we pass both the target language and English: the learner switches
-  // between them mid-sentence ("how do I say ... in Spanish?").
+  // Voxly is a bilingual tutor: the learner switches freely between English
+  // ("How do I say ... in Spanish?") and the target language.
+  // - whisper-1 takes a single `language`. Forcing it makes Whisper mangle
+  //   English questions into Spanish, so let it auto-detect and bias it with a
+  //   short bilingual prompt instead.
+  // - gpt-transcribe takes `languages`, so pass the target language and English.
   const languages = Array.from(new Set([language, "en"]));
   const params = isWhisperModel(MODELS.stt)
     ? {
         model: MODELS.stt,
         file,
-        language,
+        prompt: bilingualPrompt(language),
         response_format: "verbose_json" as const,
       }
     : // `languages` is newer than the SDK's types, so widen the param type.
@@ -46,6 +49,17 @@ export async function transcribeAudio(
       : undefined;
 
   return { transcript: response.text, duration };
+}
+
+/**
+ * Whisper uses the prompt as preceding context, which nudges it toward the
+ * right spelling, punctuation and language for short mixed-language turns.
+ */
+function bilingualPrompt(language: string): string {
+  if (language === "es") {
+    return "Conversación entre una tutora de español y su alumno, en español y en inglés. How do I say 'I'm hungry' in Spanish? Tengo hambre. What does 'madrugar' mean? ¿Cómo se dice 'tired'?";
+  }
+  return "A bilingual language lesson that mixes English with the target language.";
 }
 
 function mimeFromFilename(filename: string): string {
