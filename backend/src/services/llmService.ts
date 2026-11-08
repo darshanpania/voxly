@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { env } from "../env.js";
+import { MODELS, chatParams } from "./aiModels.js";
 import { getVocabDueForReview } from "./progressService.js";
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -211,11 +212,9 @@ export async function getTutorResponse(
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
+        ...chatParams(MODELS.chat, { temperature: 0.7, maxTokens: 2048 }),
         messages,
         response_format: { type: "json_object" },
-        temperature: 0.7,
-        max_tokens: 2048,
       });
 
       const raw = completion.choices[0]?.message?.content;
@@ -305,14 +304,12 @@ Rules:
   const user = `Student's message: ${userMessage}\n\nSofía's reply:\n${reply}`;
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4o",
+    ...chatParams(MODELS.fast, { temperature: 0.3, maxTokens: 1024 }),
     messages: [
       { role: "system", content: system },
       { role: "user", content: user },
     ],
     response_format: { type: "json_object" },
-    temperature: 0.3,
-    max_tokens: 1024,
   });
 
   const raw = completion.choices[0]?.message?.content;
@@ -389,11 +386,9 @@ export async function* streamTutorResponse(
   let completion;
   try {
     completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      ...chatParams(MODELS.chat, { temperature: 0.7, maxTokens: 2048 }),
       messages,
       stream: true,
-      temperature: 0.7,
-      max_tokens: 2048,
     });
   } catch {
     // Failed before any text was produced — safe to roll back cleanly.
