@@ -24,9 +24,13 @@ let currentSpeed = loadSpeed();
 
 interface Props {
   text: string;
+  /** Show the 1× / 0.75× speed toggle next to the play button. */
+  showSpeed?: boolean;
+  /** What the button plays, for screen readers (for example the word). */
+  label?: string;
 }
 
-export function MessageAudioButton({ text }: Props) {
+export function MessageAudioButton({ text, showSpeed = true, label }: Props) {
   const [state, setState] = useState<PlayState>("idle");
   const [speed, setSpeed] = useState(currentSpeed);
 
@@ -109,32 +113,40 @@ export function MessageAudioButton({ text }: Props) {
   }, []);
 
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="inline-flex items-center -my-2">
       <button
         type="button"
         onClick={play}
         disabled={state === "loading"}
-        className="text-text-dim hover:text-text transition-colors disabled:opacity-50"
+        className="h-11 w-11 inline-flex items-center justify-center rounded-full text-text-muted hover:text-text hover:bg-surface-2 transition-colors disabled:opacity-50"
         title={state === "playing" ? "Stop" : "Play audio"}
-        aria-label={state === "playing" ? "Stop audio" : "Play audio"}
+        aria-label={
+          state === "playing"
+            ? "Stop audio"
+            : label
+              ? `Play: ${label}`
+              : "Play audio"
+        }
       >
         {state === "loading" ? (
-          <Loader2 size={14} className="animate-spin" />
+          <Loader2 size={18} className="animate-spin" />
         ) : state === "playing" ? (
-          <Square size={14} />
+          <Square size={16} />
         ) : (
-          <Volume2 size={14} />
+          <Volume2 size={18} />
         )}
       </button>
-      <button
-        type="button"
-        onClick={toggleSpeed}
-        className="text-xs text-text-dim hover:text-text transition-colors tabular-nums"
-        title="Playback speed"
-        aria-label={`Playback speed ${speed}x`}
-      >
-        {speed}×
-      </button>
+      {showSpeed && (
+        <button
+          type="button"
+          onClick={toggleSpeed}
+          className="h-11 min-w-11 px-1.5 inline-flex items-center justify-center rounded-full text-xs font-medium text-text-muted hover:text-text hover:bg-surface-2 transition-colors tabular-nums"
+          title="Playback speed"
+          aria-label={`Playback speed ${speed}x`}
+        >
+          {speed}×
+        </button>
+      )}
     </span>
   );
 }

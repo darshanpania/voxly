@@ -12,6 +12,8 @@ const NO_SPEECH_TIMEOUT_MS = 10_000;
 // Minimum RMS level counted as speech. Raised above the measured room noise.
 const MIN_SPEECH_RMS = 0.015;
 const LEVEL_POLL_MS = 100;
+// RMS that counts as a full-strength voice for the live level meter.
+const FULL_LEVEL_RMS = 0.12;
 
 interface Options {
   language: string;
@@ -38,6 +40,9 @@ export function useVoiceRecorder({ language, onTranscript, onError }: Options) {
   const heardSpeechRef = useRef(false);
   const discardRef = useRef(false);
   const stateRef = useRef<VoiceState>("idle");
+  // Live mic level from 0 to 1. A ref, not state, so the halo can read it
+  // every animation frame without re-rendering the page.
+  const levelRef = useRef(0);
 
   // Keep the latest callbacks without re-creating start().
   const onTranscriptRef = useRef(onTranscript);
@@ -57,6 +62,7 @@ export function useVoiceRecorder({ language, onTranscript, onError }: Options) {
     if (levelTimerRef.current !== null) clearInterval(levelTimerRef.current);
     timerRef.current = null;
     levelTimerRef.current = null;
+    levelRef.current = 0;
     audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current = null;
   }, []);
@@ -99,6 +105,7 @@ export function useVoiceRecorder({ language, onTranscript, onError }: Options) {
         for (const v of samples) sum += v * v;
         const rms = Math.sqrt(sum / samples.length);
         const now = Date.now();
+        levelRef.current = Math.min(1, rms / FULL_LEVEL_RMS);
 
         // Learn the room noise during the first half second.
         if (now - startedAt < 500) {
@@ -210,5 +217,5 @@ export function useVoiceRecorder({ language, onTranscript, onError }: Options) {
   // Release the mic if the page unmounts mid-turn.
   useEffect(() => cancel, [cancel]);
 
-  return { state, elapsed, heardSpeech, start, stop, cancel };
+  return { state, elapsed, heardSpeech, levelRef, start, stop, cancel };
 }

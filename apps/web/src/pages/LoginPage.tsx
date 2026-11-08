@@ -56,30 +56,27 @@ export function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Branding */}
         <div className="mb-8 flex flex-col items-center gap-4 text-center">
-          <div
-            className="flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold text-white shadow-lg"
-            style={{
-              background:
-                "linear-gradient(135deg, var(--color-primary), var(--color-accent))",
-            }}
-          >
+          <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-es/60 font-display text-2xl font-bold text-es">
             S
           </div>
           <div className="space-y-1">
-            <h1 className="text-3xl font-bold gradient-text">Voxly</h1>
-            <p className="max-w-xs text-sm text-text-muted">
+            <h1 className="m-0 font-display text-3xl font-bold">
+              <span className="text-es">Vox</span>
+              <span className="text-en">ly</span>
+            </h1>
+            <p className="m-0 max-w-xs text-sm text-text-muted">
               {mode === "signin"
-                ? "Welcome back — sign in to keep practicing with Sofia."
-                : "Create an account to start learning Spanish with Sofia."}
+                ? "Sign in to keep talking with Sofía."
+                : "Create an account to start talking with Sofía."}
             </p>
           </div>
         </div>
 
         {/* Card */}
-        <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-6 shadow-lg">
+        <div className="rounded-[var(--radius-xl)] border border-border bg-surface p-6">
           {confirmSent ? (
             <div className="flex flex-col items-center gap-3 py-4 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 text-primary">
                 <Mail size={22} />
               </div>
               <h2 className="text-lg font-semibold">Check your email</h2>
