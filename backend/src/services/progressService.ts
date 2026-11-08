@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
+import { MODELS, chatParams } from "./aiModels.js";
 import { schedule, booleanToRating, State, type FSRSCard, type Rating } from "./fsrs.js";
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -97,10 +98,8 @@ export async function getSessionSummary(
     .join("\n");
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4o",
+    ...chatParams(MODELS.fast, { temperature: 0.5, maxTokens: 512 }),
     response_format: { type: "json_object" },
-    temperature: 0.5,
-    max_tokens: 512,
     messages: [
       {
         role: "system",
