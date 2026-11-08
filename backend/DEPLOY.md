@@ -30,6 +30,18 @@ Database and auth stay on Supabase (free plan). The function runs in `bom1`
 5. Check `https://<project>.vercel.app/health` returns `{"status":"ok"}`.
 6. Set `VITE_API_URL` in the web app to the new backend URL.
 
+## Frontend (voxly.darshanpania.me)
+
+1. Create a second Vercel project from the same repo with **Root Directory**
+   `apps/web` (Vite preset). `apps/web/vercel.json` adds the SPA rewrite.
+2. Env vars: `VITE_API_URL` (backend URL), `VITE_SUPABASE_URL`,
+   `VITE_SUPABASE_ANON_KEY`.
+3. Add the domain `voxly.darshanpania.me` to the project.
+4. In Cloudflare DNS for `darshanpania.me`, add `CNAME voxly ->
+   cname.vercel-dns.com` with the proxy **off** (DNS only).
+5. In Supabase, Auth -> URL Configuration, set the Site URL to
+   `https://voxly.darshanpania.me` and add it to the redirect URLs.
+
 ## Limits to know
 
 - Request and response bodies max out at 4.5 MB. Voice clips are far smaller,
